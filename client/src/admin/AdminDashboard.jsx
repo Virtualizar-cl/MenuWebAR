@@ -1107,8 +1107,21 @@ function ItemsPanel({
   const [successMessage, setSuccessMessage] = useState("");
   const [showImageModal, setShowImageModal] = useState(false);
   const [showModelModal, setShowModelModal] = useState(false);
+  const [copiedItemId, setCopiedItemId] = useState(null);
 
   const itemsList = allItems || items;
+
+  const handleCopyEmbed = async (itemId) => {
+    const baseUrl = window.location.origin;
+    const embedCode = `<iframe src="${baseUrl}/ar/${itemId}" width="100%" height="400" frameborder="0" allow="xr-spatial-tracking"></iframe>`;
+    try {
+      await navigator.clipboard.writeText(embedCode);
+      setCopiedItemId(itemId);
+      setTimeout(() => setCopiedItemId(null), 2000);
+    } catch (err) {
+      console.error("Error al copiar:", err);
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // VALIDACION
@@ -2024,6 +2037,15 @@ function ItemsPanel({
                           >
                             🗑️ Eliminar
                           </button>
+                          {item.modelAR && (
+                            <button
+                              className={`${styles.btnSmallEmbed} ${copiedItemId === item.id ? styles.btnSmallEmbedCopied : ""}`}
+                              onClick={() => handleCopyEmbed(item.id)}
+                              title="Copiar código iframe para embed"
+                            >
+                              {copiedItemId === item.id ? "✓ Copiado" : "📋 Embed"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </article>
