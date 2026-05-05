@@ -1,26 +1,33 @@
 // Componente que sube archivos DIRECTAMENTE a Cloudinary desde el navegador
-// (sin pasar por nuestro backend). Cloudinary tiene un sistema de "unsigned
-// upload presets" que permite que clientes publicos suban archivos sin
-// necesidad de firmar con la API secret. El secret nunca sale del server.
+// (sin pasar por nuestro backend). Esto lo hacemos asi porque Cloudinary tiene
+// un sistema de "unsigned upload presets" que permite que clientes publicos
+// suban archivos sin necesidad de firmar con la API secret. El secret nunca
+// sale del server.
 //
 // Flujo:
 //   1. User elige archivo
 //   2. Frontend manda a cloudinary.com/v1_1/xxx/image(o raw)/upload
 //   3. Cloudinary devuelve la URL publica
 //   4. Frontend llama a nuestro backend para registrar esa URL en Supabase
+//
+// Cuando se borra, el backend borra de Cloudinary ademas de Supabase (ahi si
+// necesita el API secret).
 
 import { useRef, useState, useEffect } from "react";
 import { createImagenAsset, createModeloAsset } from "./api";
 
+// Las credenciales de Cloudinary vienen del .env. Los defaults son los del
+// proyecto Route 66, dejamos fallback por si el .env no esta cargado bien.
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "dxpam0kqa";
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "HublabMenuWebAr";
 const CLOUDINARY_UPLOAD_FOLDER = import.meta.env.VITE_CLOUDINARY_UPLOAD_FOLDER || "uploads";
+// Los .glb van a una subcarpeta /models para tenerlos separados de las fotos.
 const CLOUDINARY_MODELS_FOLDER = `${CLOUDINARY_UPLOAD_FOLDER}/models`;
 
-// =====================================================
-// HELPERS
-// =====================================================
-
+// Construye un id unico para el asset. Toma el nombre del archivo, lo limpia
+// (solo letras/numeros/guiones, minusculas) y le agrega un timestamp en base
+// 36 al final para garantizar unicidad aunque se suba el mismo archivo dos
+// veces.
 function buildAssetId(fileName, prefix) {
   const baseName = fileName.replace(/\.[^/.]+$/, "").toLowerCase();
   const sanitized = baseName
@@ -31,374 +38,30 @@ function buildAssetId(fileName, prefix) {
   return `${prefix}_${sanitized || "asset"}_${suffix}`;
 }
 
+// Toma "hamburguesa.jpg" y devuelve "hamburguesa" como label legible.
 function buildAssetLabel(fileName) {
   return fileName.replace(/\.[^/.]+$/, "").trim() || "Archivo";
 }
 
-function formatUploadError(message) {
-  if (message.toLowerCase().includes("upload preset not found")) {
-    return `Cloudinary no encuentra el preset "${CLOUDINARY_UPLOAD_PRESET}". Crealo como Unsigned en Settings > Upload > Upload presets.`;
-  }
-  return message;
-}
-
-function ensureCloudinaryConfig() {
-  const missing = [];
-  if (!CLOUDINARY_CLOUD_NAME) missing.push("VITE_CLOUDINARY_CLOUD_NAME");
-  if (!CLOUDINARY_UPLOAD_PRESET) missing.push("VITE_CLOUDINARY_UPLOAD_PRESET");
-  if (missing.length === 0) return null;
-  return `Falta configurar: ${missing.join(", ")}. Si acabas de editar .env, reinicia npm run dev.`;
-}
-
-async function uploadToCloudinary(file, resourceType, folder) {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-  formData.append("folder", folder);
-
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`,
-    { method: "POST", body: formData },
-  );
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || "Error al subir archivo a Cloudinary");
-  }
-  return payload.secure_url;
-}
-
-// =====================================================
-// ESTILOS COMPARTIDOS
-// =====================================================
-// Centralizados para evitar el copy-paste inline que tenia el componente original.
-
-const styles = {
-  card: {
-    display: "grid",
-    gap: "0.75rem",
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(212, 170, 99, 0.2)",
-    borderRadius: 12,
-    padding: "1rem",
-  },
-  chooseBtn: {
-    background: "rgba(255, 255, 255, 0.08)",
-    color: "#f7f1e8",
-    border: "1px solid rgba(255, 255, 255, 0.15)",
-    borderRadius: 8,
-    padding: "0.65rem 1rem",
-    cursor: "pointer",
-    width: "fit-content",
-  },
-  removeBtn: {
-    position: "absolute",
-    top: -10,
-    right: -10,
-    width: 32,
-    height: 32,
-    borderRadius: "50%",
-    border: "2px solid #0f1724",
-    background: "#ff4444",
-    color: "#fff",
-    fontSize: "1rem",
-    fontWeight: 700,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-  },
-  label: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.3rem",
-    fontSize: "0.8rem",
-    color: "rgba(255, 255, 255, 0.6)",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-  },
-  input: {
-    background: "rgba(255, 255, 255, 0.07)",
-    border: "1px solid rgba(255, 255, 255, 0.12)",
-    borderRadius: 8,
-    padding: "0.65rem 0.85rem",
-    color: "#d4aa63",
-    fontSize: "0.95rem",
-    fontFamily: "inherit",
-  },
-  uploadBtn: {
-    background: "linear-gradient(135deg, #d4aa63, #c49a52)",
-    color: "#0f1724",
-    border: "none",
-    borderRadius: 8,
-    padding: "0.65rem 1rem",
-    fontWeight: 700,
-  },
-  meta: { margin: 0, color: "rgba(255,255,255,0.6)", fontSize: "0.85rem" },
-};
-
-// =====================================================
-// HOOK: maneja el preview de imagen con createObjectURL/revokeObjectURL
-// =====================================================
-function useImagePreview(file) {
-  const [preview, setPreview] = useState("");
-  useEffect(() => {
-    if (!file) {
-      setPreview("");
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-  return preview;
-}
-
-// =====================================================
-// SUBCOMPONENTE: card de upload generica
-// =====================================================
-// Recibe por props todo lo que diferencia imagen de modelo:
-//   - title, acceptAttr, chooseLabel, uploadLabel
-//   - resourceType ("image" | "raw"), folder
-//   - createAsset (createImagenAsset | createModeloAsset)
-//   - renderPreview (la imagen renderea <img>, el modelo un placeholder)
-//   - extraValidation (modelo valida extension .glb)
-//   - assetType ("image" | "model") para el callback onUploadComplete
-//   - successLabel ("Imagen" | "Modelo .glb")
-function AssetUploadCard({
-  title,
-  acceptAttr,
-  chooseLabel,
-  uploadLabel,
-  successLabel,
-  inputLabel,
-  inputPlaceholder,
-  resourceType,
-  folder,
-  createAsset,
-  idPrefix,
-  renderPreview,
-  extraValidation,
-  assetType,
-  onUploadComplete,
-  onError,
-  helperText,
-}) {
-  const inputRef = useRef(null);
-  const [file, setFile] = useState(null);
-  const [customName, setCustomName] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [resultURL, setResultURL] = useState("");
-
-  const handleFileChange = (event) => {
-    const f = event.target.files?.[0] || null;
-    setFile(f);
-    setCustomName(f ? buildAssetLabel(f.name) : "");
-    setResultURL("");
-    onError("");
-  };
-
-  const handleRemove = () => {
-    setFile(null);
-    setCustomName("");
-    setResultURL("");
-    onError("");
-    if (inputRef.current) inputRef.current.value = "";
-  };
-
-  const handleUpload = async () => {
-    if (!file) {
-      onError(`Selecciona ${chooseLabel.toLowerCase()} primero.`);
-      return;
-    }
-    if (extraValidation) {
-      const validationError = extraValidation(file);
-      if (validationError) {
-        onError(validationError);
-        return;
-      }
-    }
-    if (!customName.trim()) {
-      onError("El nombre no puede estar vacío.");
-      return;
-    }
-    const cfgError = ensureCloudinaryConfig();
-    if (cfgError) {
-      onError(cfgError);
-      return;
-    }
-
-    setUploading(true);
-    onError("");
-    setResultURL("");
-
-    try {
-      const url = await uploadToCloudinary(file, resourceType, folder);
-      const saved = await createAsset({
-        id: buildAssetId(customName, idPrefix),
-        label: customName.trim(),
-        url,
-      });
-
-      setResultURL(saved.src || url);
-      onUploadComplete?.(saved, assetType);
-
-      setFile(null);
-      setCustomName("");
-      if (inputRef.current) inputRef.current.value = "";
-    } catch (uploadError) {
-      onError(formatUploadError(uploadError?.message || "No se pudo subir el archivo"));
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const canUpload = !uploading && customName.trim();
-
-  return (
-    <div style={{ display: "grid", gap: "0.75rem" }}>
-      <h3 style={{ margin: 0, color: "#f7f1e8", fontSize: "1rem" }}>{title}</h3>
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept={acceptAttr}
-        onChange={handleFileChange}
-        style={{ display: "none" }}
-      />
-
-      {!file && (
-        <button type="button" onClick={() => inputRef.current?.click()} style={styles.chooseBtn}>
-          {chooseLabel}
-        </button>
-      )}
-
-      {file && (
-        <div style={styles.card}>
-          <div style={{ position: "relative", display: "inline-block", alignSelf: "center" }}>
-            {renderPreview(file)}
-            <button
-              type="button"
-              onClick={handleRemove}
-              disabled={uploading}
-              title="Quitar archivo y elegir otro"
-              style={{
-                ...styles.removeBtn,
-                cursor: uploading ? "not-allowed" : "pointer",
-                opacity: uploading ? 0.5 : 1,
-              }}
-            >
-              ✕
-            </button>
-          </div>
-
-          <label style={styles.label}>
-            {inputLabel}
-            <input
-              type="text"
-              value={customName}
-              onChange={(e) => setCustomName(e.target.value)}
-              disabled={uploading}
-              placeholder={inputPlaceholder}
-              style={styles.input}
-            />
-          </label>
-
-          <p style={styles.meta}>
-            Archivo: {file.name} ({(file.size / 1024).toFixed(1)} KB)
-          </p>
-
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={handleUpload}
-              disabled={!canUpload}
-              style={{
-                ...styles.uploadBtn,
-                cursor: canUpload ? "pointer" : "not-allowed",
-                opacity: canUpload ? 1 : 0.6,
-              }}
-            >
-              {uploading ? "Subiendo..." : uploadLabel}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {helperText && (
-        <p style={{ margin: 0, color: "rgba(212, 170, 99, 0.8)", fontSize: "0.85rem" }}>
-          {helperText}
-        </p>
-      )}
-
-      {resultURL && (
-        <div style={{ display: "grid", gap: "0.5rem" }}>
-          <p style={{ margin: 0, color: "#6ee7a7" }}>{successLabel} subido correctamente.</p>
-          <a
-            href={resultURL}
-            target="_blank"
-            rel="noreferrer"
-            style={{ color: "#7cc7ff", wordBreak: "break-all" }}
-          >
-            {resultURL}
-          </a>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// =====================================================
-// PREVIEWS
-// =====================================================
-
-function ImagePreview({ file }) {
-  const preview = useImagePreview(file);
-  if (!preview) return null;
-  return (
-    <img
-      src={preview}
-      alt="Vista previa"
-      style={{
-        maxWidth: 320,
-        width: "100%",
-        borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.2)",
-        display: "block",
-      }}
-    />
-  );
-}
-
-function ModelPreview() {
-  return (
-    <div
-      style={{
-        width: 320,
-        maxWidth: "100%",
-        height: 160,
-        borderRadius: 8,
-        border: "1px solid rgba(255,255,255,0.2)",
-        background: "linear-gradient(135deg, rgba(212, 170, 99, 0.12), rgba(212, 170, 99, 0.04))",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "0.5rem",
-        color: "#d4aa63",
-      }}
-    >
-      <div style={{ fontSize: "2.5rem" }}>📦</div>
-      <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>Modelo 3D .glb</div>
-    </div>
-  );
-}
-
-// =====================================================
-// COMPONENTE PRINCIPAL
-// =====================================================
-
 export default function AdminUploader({ onUploadComplete }) {
+  // Refs a los inputs file para poder limpiarlos programaticamente despues
+  // del upload (sin esto, el input recordaria el ultimo archivo elegido).
+  const imageInputRef = useRef(null);
+  const modelInputRef = useRef(null);
+
+  // Estados separados para imagen y modelo porque el uploader maneja los dos
+  // flujos en paralelo (el user puede tener ambos selects abiertos).
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
+  const [customImageName, setCustomImageName] = useState("");
+
+  const [modelFile, setModelFile] = useState(null);
+  const [customModelName, setCustomModelName] = useState("");
+
+  const [imageUploading, setImageUploading] = useState(false);
+  const [modelUploading, setModelUploading] = useState(false);
+  const [imageURL, setImageURL] = useState("");
+  const [modelURL, setModelURL] = useState("");
   const [error, setError] = useState("");
 
   // Genera el preview de la imagen con URL.createObjectURL. Es importante
@@ -590,49 +253,333 @@ export default function AdminUploader({ onUploadComplete }) {
     <div style={{ display: "grid", gap: "1rem", maxWidth: 720, width: "100%" }}>
       <h2 style={{ margin: 0, color: "#d4aa63" }}>Subir Archivos a Cloudinary</h2>
 
-      <AssetUploadCard
-        title="Imagen del menú"
-        acceptAttr="image/*"
-        chooseLabel="Elegir imagen"
-        uploadLabel="Subir imagen"
-        successLabel="Imagen"
-        inputLabel="Nombre de la imagen"
-        inputPlaceholder="Ej: Hamburguesa Clásica"
-        resourceType="image"
-        folder={CLOUDINARY_UPLOAD_FOLDER}
-        createAsset={createImagenAsset}
-        idPrefix="img"
-        assetType="image"
-        renderPreview={(file) => <ImagePreview file={file} />}
-        onUploadComplete={onUploadComplete}
-        onError={setError}
-      />
+      {/* ==================== Bloque de IMAGEN ==================== */}
+      <div style={{ display: "grid", gap: "0.75rem" }}>
+        <h3 style={{ margin: 0, color: "#f7f1e8", fontSize: "1rem" }}>Imagen del menú</h3>
 
+        {/* Input file oculto, se activa via el boton de abajo */}
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageFileChange}
+          style={{ display: "none" }}
+        />
+
+        {!imageFile && (
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            style={{
+              background: "rgba(255, 255, 255, 0.08)",
+              color: "#f7f1e8",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              borderRadius: 8,
+              padding: "0.65rem 1rem",
+              cursor: "pointer",
+              width: "fit-content",
+            }}
+          >
+            Elegir imagen
+          </button>
+        )}
+
+        {imageFile && imagePreview && (
+          <div
+            style={{
+              display: "grid",
+              gap: "0.75rem",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(212, 170, 99, 0.2)",
+              borderRadius: 12,
+              padding: "1rem",
+            }}
+          >
+            {/* Preview de la imagen con boton X para descartarla */}
+            <div style={{ position: "relative", display: "inline-block", alignSelf: "center" }}>
+              <img
+                src={imagePreview}
+                alt="Vista previa"
+                style={{
+                  maxWidth: 320,
+                  width: "100%",
+                  borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  display: "block",
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleRemoveImage}
+                disabled={imageUploading}
+                title="Quitar imagen y elegir otra"
+                style={{
+                  position: "absolute",
+                  top: -10,
+                  right: -10,
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  border: "2px solid #0f1724",
+                  background: "#ff4444",
+                  color: "#fff",
+                  fontSize: "1rem",
+                  fontWeight: 700,
+                  cursor: imageUploading ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                  opacity: imageUploading ? 0.5 : 1,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.3rem",
+                fontSize: "0.8rem",
+                color: "rgba(255, 255, 255, 0.6)",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Nombre de la imagen
+              <input
+                type="text"
+                value={customImageName}
+                onChange={(e) => setCustomImageName(e.target.value)}
+                disabled={imageUploading}
+                placeholder="Ej: Hamburguesa Clásica"
+                style={{
+                  background: "rgba(255, 255, 255, 0.07)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  borderRadius: 8,
+                  padding: "0.65rem 0.85rem",
+                  color: "#d4aa63",
+                  fontSize: "0.95rem",
+                  fontFamily: "inherit",
+                }}
+              />
+            </label>
+
+            <p style={{ margin: 0, color: "rgba(255,255,255,0.6)", fontSize: "0.85rem" }}>
+              Archivo: {imageFile.name} ({(imageFile.size / 1024).toFixed(1)} KB)
+            </p>
+
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={handleImageUpload}
+                disabled={imageUploading || !customImageName.trim()}
+                style={{
+                  background: "linear-gradient(135deg, #d4aa63, #c49a52)",
+                  color: "#0f1724",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "0.65rem 1rem",
+                  fontWeight: 700,
+                  cursor: imageUploading || !customImageName.trim() ? "not-allowed" : "pointer",
+                  opacity: imageUploading || !customImageName.trim() ? 0.6 : 1,
+                }}
+              >
+                {imageUploading ? "Subiendo..." : "Subir imagen"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {imageURL && (
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            <p style={{ margin: 0, color: "#6ee7a7" }}>Imagen subida correctamente.</p>
+            <a
+              href={imageURL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "#7cc7ff", wordBreak: "break-all" }}
+            >
+              {imageURL}
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* Separador visual entre los dos bloques */}
       <div style={{ height: 1, background: "rgba(255,255,255,0.15)" }} />
 
-      <AssetUploadCard
-        title="Modelo AR (.glb)"
-        acceptAttr=".glb,model/gltf-binary"
-        chooseLabel="Elegir modelo .glb"
-        uploadLabel="Subir modelo AR"
-        successLabel="Modelo .glb"
-        inputLabel="Nombre del modelo"
-        inputPlaceholder="Ej: Hamburguesa 3D"
-        resourceType="raw"
-        folder={CLOUDINARY_MODELS_FOLDER}
-        createAsset={createModeloAsset}
-        idPrefix="mdl"
-        assetType="model"
-        renderPreview={() => <ModelPreview />}
-        extraValidation={(file) =>
-          !file.name.toLowerCase().endsWith(".glb")
-            ? "El modelo AR debe tener extensión .glb"
-            : null
-        }
-        helperText="Acepta solo archivos .glb"
-        onUploadComplete={onUploadComplete}
-        onError={setError}
-      />
+      {/* ==================== Bloque de MODELO 3D ==================== */}
+      <div style={{ display: "grid", gap: "0.75rem" }}>
+        <h3 style={{ margin: 0, color: "#f7f1e8", fontSize: "1rem" }}>Modelo AR (.glb)</h3>
+
+        <input
+          ref={modelInputRef}
+          type="file"
+          accept=".glb,model/gltf-binary"
+          onChange={handleModelFileChange}
+          style={{ display: "none" }}
+        />
+
+        {!modelFile && (
+          <button
+            type="button"
+            onClick={() => modelInputRef.current?.click()}
+            style={{
+              background: "rgba(255, 255, 255, 0.08)",
+              color: "#f7f1e8",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              borderRadius: 8,
+              padding: "0.65rem 1rem",
+              cursor: "pointer",
+              width: "fit-content",
+            }}
+          >
+            Elegir modelo .glb
+          </button>
+        )}
+
+        {modelFile && (
+          <div
+            style={{
+              display: "grid",
+              gap: "0.75rem",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(212, 170, 99, 0.2)",
+              borderRadius: 12,
+              padding: "1rem",
+            }}
+          >
+            <div style={{ position: "relative", display: "inline-block", alignSelf: "center" }}>
+              {/* No hay preview visual del .glb porque seria demasiado caro
+                  renderizarlo aca. Mostramos un placeholder con icono. */}
+              <div
+                style={{
+                  width: 320,
+                  maxWidth: "100%",
+                  height: 160,
+                  borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  background:
+                    "linear-gradient(135deg, rgba(212, 170, 99, 0.12), rgba(212, 170, 99, 0.04))",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.5rem",
+                  color: "#d4aa63",
+                }}
+              >
+                <div style={{ fontSize: "2.5rem" }}>📦</div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 600 }}>Modelo 3D .glb</div>
+              </div>
+              <button
+                type="button"
+                onClick={handleRemoveModel}
+                disabled={modelUploading}
+                title="Quitar modelo y elegir otro"
+                style={{
+                  position: "absolute",
+                  top: -10,
+                  right: -10,
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  border: "2px solid #0f1724",
+                  background: "#ff4444",
+                  color: "#fff",
+                  fontSize: "1rem",
+                  fontWeight: 700,
+                  cursor: modelUploading ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                  opacity: modelUploading ? 0.5 : 1,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.3rem",
+                fontSize: "0.8rem",
+                color: "rgba(255, 255, 255, 0.6)",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Nombre del modelo
+              <input
+                type="text"
+                value={customModelName}
+                onChange={(e) => setCustomModelName(e.target.value)}
+                disabled={modelUploading}
+                placeholder="Ej: Hamburguesa 3D"
+                style={{
+                  background: "rgba(255, 255, 255, 0.07)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  borderRadius: 8,
+                  padding: "0.65rem 0.85rem",
+                  color: "#d4aa63",
+                  fontSize: "0.95rem",
+                  fontFamily: "inherit",
+                }}
+              />
+            </label>
+
+            <p style={{ margin: 0, color: "rgba(255,255,255,0.6)", fontSize: "0.85rem" }}>
+              Archivo: {modelFile.name} ({(modelFile.size / 1024).toFixed(1)} KB)
+            </p>
+
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={handleModelUpload}
+                disabled={modelUploading || !customModelName.trim()}
+                style={{
+                  background: "linear-gradient(135deg, #d4aa63, #c49a52)",
+                  color: "#0f1724",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "0.65rem 1rem",
+                  fontWeight: 700,
+                  cursor: modelUploading || !customModelName.trim() ? "not-allowed" : "pointer",
+                  opacity: modelUploading || !customModelName.trim() ? 0.6 : 1,
+                }}
+              >
+                {modelUploading ? "Subiendo..." : "Subir modelo AR"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p style={{ margin: 0, color: "rgba(212, 170, 99, 0.8)", fontSize: "0.85rem" }}>
+          Acepta solo archivos .glb
+        </p>
+
+        {modelURL && (
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            <p style={{ margin: 0, color: "#6ee7a7" }}>Modelo .glb subido correctamente.</p>
+            <a
+              href={modelURL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "#7cc7ff", wordBreak: "break-all" }}
+            >
+              {modelURL}
+            </a>
+          </div>
+        )}
+      </div>
 
       {error && <p style={{ margin: 0, color: "#ff6b6b" }}>{error}</p>}
     </div>
