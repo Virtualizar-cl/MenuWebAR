@@ -92,6 +92,12 @@ function isDescuentoActive(descuento, inicio, fin, now = Date.now()) {
 // MAPEOS BD -> FRONTEND
 // =====================================================
 
+function roundTo990(raw) {
+  if (raw < 990) return Math.max(0, Math.round(raw));
+  const rounded = Math.floor(raw / 1000) * 1000 + 990;
+  return rounded > raw ? rounded - 1000 : rounded;
+}
+
 function mapCategoryRow(row) {
   return { id: formatCategoryId(row.id_categ), label: row.nombre_categ };
 }
@@ -111,7 +117,7 @@ function mapItemRow(row, { categoriesById, imagenesById, modelosById }) {
 
   const descuento = Number.isInteger(row.descuento) ? row.descuento : 0;
   const active = isDescuentoActive(descuento, row.descuento_inicio, row.descuento_fin);
-  const discountedPrice = active ? Math.round(row.precio * (1 - descuento / 100)) : row.precio;
+  const discountedPrice = active ? roundTo990(row.precio * (1 - descuento / 100)) : row.precio;
 
   return {
     id: formatItemId(row.id),
