@@ -1,54 +1,108 @@
+.ingredientsContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  max-height: 45vh;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.ingredientsContainer::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ingredientsContainer::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+}
+
+.ingredientsContainer::-webkit-scrollbar-thumb {
+  background: rgba(212, 170, 99, 0.3);
+  border-radius: 2px;
+}
+
 .ingredientsList {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.65rem;
+}
+
+.ingredientsList::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ingredientsList::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+}
+
+.ingredientsList::-webkit-scrollbar-thumb {
+  background: rgba(212, 170, 99, 0.3);
+  border-radius: 2px;
 }
 
 .ingredientItem {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: rgba(212, 170, 99, 0.08);
-  border: 1px solid rgba(212, 170, 99, 0.2);
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  background: linear-gradient(135deg, rgba(212, 170, 99, 0.06), rgba(212, 170, 99, 0.12));
+  border: 1px solid rgba(212, 170, 99, 0.18);
   border-radius: 10px;
   color: #f7f1e8;
-  font-size: 0.95rem;
-  transition: all 0.2s ease;
+  font-size: 1rem;
+  line-height: 1.4;
+  transition: all 0.25s ease;
 }
 
 .ingredientItem:hover {
-  background: rgba(212, 170, 99, 0.15);
+  background: linear-gradient(135deg, rgba(212, 170, 99, 0.12), rgba(212, 170, 99, 0.2));
   border-color: rgba(212, 170, 99, 0.35);
+  box-shadow: 0 4px 12px rgba(212, 170, 99, 0.15);
+  transform: translateX(4px);
 }
 
-.ingredientBullet {
-  color: var(--r66-gold);
-  font-weight: bold;
-  font-size: 1.2rem;
-  line-height: 1;
-}
-
-.noIngredientsMessage {
-  width: 100%;
-  height: 100%;
+.ingredientNumber {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
-  background: rgba(212, 170, 99, 0.08);
-  border: 1px dashed rgba(212, 170, 99, 0.3);
-  border-radius: 10px;
-  min-height: 150px;
+  min-width: 24px;
+  height: 24px;
+  background: var(--r66-gold);
+  color: #0a1019;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.ingredientText {
+  flex: 1;
+}
+
+.noIngredientsMessage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2.5rem 1.5rem;
+  background: rgba(212, 170, 99, 0.05);
+  border: 1px dashed rgba(212, 170, 99, 0.25);
+  border-radius: 12px;
+  min-height: 160px;
+}
+
+.noIngredientsIcon {
+  font-size: 2.5rem;
+  opacity: 0.5;
 }
 
 .noIngredientsMessage p {
   margin: 0;
-  font-size: 0.95rem;
-  color: rgba(247, 241, 232, 0.6);
+  font-size: 1rem;
+  color: rgba(247, 241, 232, 0.55);
   text-align: center;
-  font-style: italic;
 }

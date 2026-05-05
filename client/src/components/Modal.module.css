@@ -43,6 +43,12 @@
   gap: 12px;
 }
 
+.fitContent {
+  height: auto;
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+
 .headerModal {
   width: 100%;
   display: grid;
