@@ -7,11 +7,7 @@ import { ErrorState } from "../components/ui/ErrorState";
 import "../components/charts/ChartProviders";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 import { currencyFormatter } from "../config/currencyFormatter";
-import {
-  barOptions,
-  lineOptions,
-  doughnutOptions,
-} from "../components/charts/chartConfigs";
+import { barOptions, lineOptions, doughnutOptions } from "../components/charts/chartConfigs";
 import {
   buildTrendData,
   buildByActionData,
@@ -43,7 +39,9 @@ export default function StatsPanel() {
   if (statsError || analyticsError) return <ErrorState message={statsError || analyticsError} />;
   if (!stats || !analytics) return null;
 
-  const byHourActiveCount = buildByHourData(stats.byHour).datasets[0].data.filter((v) => v > 0).length;
+  const byHourActiveCount = buildByHourData(stats.byHour).datasets[0].data.filter(
+    (v) => v > 0,
+  ).length;
 
   return (
     <div>
@@ -117,10 +115,7 @@ export default function StatsPanel() {
           </div>
           <div className={styles.chartWrapMd}>
             {Object.keys(stats.durationByDay || {}).length > 0 ? (
-              <Line
-                data={buildDurationByDayData(stats.durationByDay)}
-                options={lineOptions()}
-              />
+              <Line data={buildDurationByDayData(stats.durationByDay)} options={lineOptions()} />
             ) : (
               <span className={styles.helperText}>Sin datos</span>
             )}

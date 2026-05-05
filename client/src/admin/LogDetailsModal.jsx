@@ -2,6 +2,25 @@ import { ACTION_STYLES, ENTITY_ICONS } from "../utils/constants";
 import { formatDate } from "../utils/dateUtils";
 import styles from "./LogsPanel.module.css";
 
+// Subcomponentes para evitar duplicar la estructura de fila/seccion.
+function DetailsRow({ label, children }) {
+  return (
+    <div className={styles.logDetailsRow}>
+      <span className={styles.logDetailsLabel}>{label}</span>
+      <span className={styles.logDetailsValue}>{children}</span>
+    </div>
+  );
+}
+
+function DetailsSection({ title, children }) {
+  return (
+    <div className={styles.logDetailsSection}>
+      <h4>{title}</h4>
+      <div className={styles.logDetailsGrid}>{children}</div>
+    </div>
+  );
+}
+
 export function LogDetailsContent({ log }) {
   if (!log) return null;
 
@@ -11,82 +30,40 @@ export function LogDetailsContent({ log }) {
       : log.details
     : {};
 
+  const actionStyle = ACTION_STYLES[log.action];
+
   return (
     <div className={styles.logDetailsContent}>
-      <div className={styles.logDetailsSection}>
-        <h4>Información General</h4>
-        <div className={styles.logDetailsGrid}>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>ID</span>
-            <span className={styles.logDetailsValue}>{log.id}</span>
-          </div>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>Fecha</span>
-            <span className={styles.logDetailsValue}>{formatDate(log.created_at)}</span>
-          </div>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>Usuario</span>
-            <span className={styles.logDetailsValue}>{log.username}</span>
-          </div>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>Acción</span>
-            <span
-              className={styles.logDetailsBadge}
-              style={{
-                background: ACTION_STYLES[log.action]?.bg,
-                color: ACTION_STYLES[log.action]?.color,
-              }}
-            >
-              {log.action}
-            </span>
-          </div>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>Entidad</span>
-            <span className={styles.logDetailsValue}>
-              {ENTITY_ICONS[log.entity_type]} {log.entity_label || log.entity_type}
-            </span>
-          </div>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>ID Entidad</span>
-            <span className={styles.logDetailsValue}>{log.entity_id || "-"}</span>
-          </div>
+      <DetailsSection title="Información General">
+        <DetailsRow label="ID">{log.id}</DetailsRow>
+        <DetailsRow label="Fecha">{formatDate(log.created_at)}</DetailsRow>
+        <DetailsRow label="Usuario">{log.username}</DetailsRow>
+        <div className={styles.logDetailsRow}>
+          <span className={styles.logDetailsLabel}>Acción</span>
+          <span
+            className={styles.logDetailsBadge}
+            style={{ background: actionStyle?.bg, color: actionStyle?.color }}
+          >
+            {log.action}
+          </span>
         </div>
-      </div>
+        <DetailsRow label="Entidad">
+          {ENTITY_ICONS[log.entity_type]} {log.entity_label || log.entity_type}
+        </DetailsRow>
+        <DetailsRow label="ID Entidad">{log.entity_id || "-"}</DetailsRow>
+      </DetailsSection>
 
-      <div className={styles.logDetailsSection}>
-        <h4>Request</h4>
-        <div className={styles.logDetailsGrid}>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>Método</span>
-            <span className={styles.logDetailsValue}>{log.method}</span>
-          </div>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>Path</span>
-            <span className={styles.logDetailsValue}>{log.path}</span>
-          </div>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>IP</span>
-            <span className={styles.logDetailsValue}>{log.ip}</span>
-          </div>
-          <div className={styles.logDetailsRow}>
-            <span className={styles.logDetailsLabel}>Duración</span>
-            <span className={styles.logDetailsValue}>
-              {log.duration ? `${log.duration}ms` : "-"}
-            </span>
-          </div>
-        </div>
-      </div>
+      <DetailsSection title="Request">
+        <DetailsRow label="Método">{log.method}</DetailsRow>
+        <DetailsRow label="Path">{log.path}</DetailsRow>
+        <DetailsRow label="IP">{log.ip}</DetailsRow>
+        <DetailsRow label="Duración">{log.duration ? `${log.duration}ms` : "-"}</DetailsRow>
+      </DetailsSection>
 
       {details.statusCode && (
-        <div className={styles.logDetailsSection}>
-          <h4>Estado</h4>
-          <div className={styles.logDetailsGrid}>
-            <div className={styles.logDetailsRow}>
-              <span className={styles.logDetailsLabel}>Status Code</span>
-              <span className={styles.logDetailsValue}>{details.statusCode}</span>
-            </div>
-          </div>
-        </div>
+        <DetailsSection title="Estado">
+          <DetailsRow label="Status Code">{details.statusCode}</DetailsRow>
+        </DetailsSection>
       )}
 
       {details.response && (

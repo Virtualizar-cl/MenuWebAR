@@ -9,14 +9,14 @@ function getEntityType(path) {
   if (path.includes("/auth/")) return null;
   if (path.includes("/health")) return null;
   if (path.includes("/menu")) return null;
-  
+
   // Rutas de entidades
   if (path.includes("/admin/items")) return "item";
   if (path.includes("/admin/categories")) return "category";
   if (path.includes("/admin/imagenes") || path.includes("/upload-image")) return "image";
   if (path.includes("/admin/modelos")) return "modelo";
   if (path.includes("/admin/password")) return "password";
-  
+
   return null;
 }
 

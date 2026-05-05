@@ -1,4 +1,4 @@
-export const tooltipDefaults = {
+const tooltipDefaults = {
   backgroundColor: "rgba(0,0,0,0.85)",
   titleColor: "#d4aa63",
   bodyColor: "rgba(255,255,255,0.8)",

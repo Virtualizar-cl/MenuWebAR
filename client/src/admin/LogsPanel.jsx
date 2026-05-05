@@ -137,7 +137,9 @@ export default function LogsPanel() {
           <button className={styles.navBtn} disabled={offset === 0} onClick={prevPage}>
             ← Anterior
           </button>
-          <span className={styles.logsPaginationInfo}>{offset + 1}-{offset + logs.length}</span>
+          <span className={styles.logsPaginationInfo}>
+            {offset + 1}-{offset + logs.length}
+          </span>
           <button className={styles.navBtn} disabled={!hasMore} onClick={nextPage}>
             Siguiente →
           </button>

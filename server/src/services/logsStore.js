@@ -5,11 +5,12 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const LOGS_TABLE = "activity_logs";
 
-const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-  : null;
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+    : null;
 
 const isEnabled = Boolean(supabase);
 
@@ -34,11 +35,7 @@ async function addLog(entry) {
   };
 
   try {
-    const { data, error } = await supabase
-      .from(LOGS_TABLE)
-      .insert(logEntry)
-      .select()
-      .single();
+    const { data, error } = await supabase.from(LOGS_TABLE).insert(logEntry).select().single();
 
     if (error) throw error;
     return data;
@@ -54,10 +51,7 @@ async function getStats({ days = 7, username } = {}) {
   const now = new Date();
   const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  let query = supabase
-    .from(LOGS_TABLE)
-    .select("*")
-    .gte("created_at", since);
+  let query = supabase.from(LOGS_TABLE).select("*").gte("created_at", since);
 
   if (username) {
     query = query.eq("username", username);
@@ -104,7 +98,7 @@ async function getStats({ days = 7, username } = {}) {
     return acc;
   }, {});
   const durationByDay = Object.fromEntries(
-    Object.entries(byDayDuration).map(([day, { sum, count }]) => [day, Math.round(sum / count)])
+    Object.entries(byDayDuration).map(([day, { sum, count }]) => [day, Math.round(sum / count)]),
   );
 
   const byHour = logs.reduce((acc, l) => {
@@ -121,13 +115,12 @@ async function getStats({ days = 7, username } = {}) {
     return acc;
   }, {});
 
-  const durations = logs.map(l => l.duration).filter(d => d != null);
-  const avgDuration = durations.length > 0
-    ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
-    : 0;
+  const durations = logs.map((l) => l.duration).filter((d) => d != null);
+  const avgDuration =
+    durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
 
   const recent = [...logs].reverse().slice(0, 20);
-  const users = [...new Set(logs.map(l => l.username))];
+  const users = [...new Set(logs.map((l) => l.username))];
 
   return {
     total: logs.length,
@@ -191,7 +184,6 @@ async function clearLogs() {
 }
 
 module.exports = {
-  isEnabled,
   addLog,
   getStats,
   getLogs,

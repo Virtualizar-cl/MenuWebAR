@@ -2,9 +2,7 @@
 // platos del backend. Da mejor sensacion de velocidad que un spinner porque
 // el user ya ve la "forma" de lo que va a aparecer.
 //
-// Exportamos dos cosas:
-//   - MenuCardSkeleton: una sola card placeholder (default export)
-//   - MenuSkeleton: grid con N skeletons (named export, lo que usa App.jsx)
+// Exportamos MenuSkeleton: grid con N skeletons (lo que usa App.jsx).
 
 import styles from "./MenuCardSkeleton.module.css";
 
@@ -39,5 +37,3 @@ export function MenuSkeleton({ count = 6 }) {
     </div>
   );
 }
-
-export default MenuCardSkeleton;

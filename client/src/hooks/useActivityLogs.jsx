@@ -47,11 +47,14 @@ export function useActivityLogs() {
     setFilters((f) => ({ ...f, [key]: value }));
   }, []);
 
-  const applyFilter = useCallback((key, value) => {
-    const newFilters = { ...filters, [key]: value };
-    setFilters(newFilters);
-    loadLogs(0, newFilters);
-  }, [filters, loadLogs]);
+  const applyFilter = useCallback(
+    (key, value) => {
+      const newFilters = { ...filters, [key]: value };
+      setFilters(newFilters);
+      loadLogs(0, newFilters);
+    },
+    [filters, loadLogs],
+  );
 
   const nextPage = useCallback(() => loadLogs(offset + limit), [loadLogs, offset, limit]);
   const prevPage = useCallback(

@@ -155,9 +155,12 @@ function calcDiscountedPrice(priceStr, percent) {
   const base = parseInt(unformatPrice(priceStr), 10);
   if (Number.isNaN(base)) return 0;
   if (!percent || percent <= 0) return base;
-  return Math.round(base * (1 - percent / 100));
+  const raw = base * (1 - percent / 100);
+  // redondear al 990 más cercano hacia abajo (mín 990)
+  const rounded = Math.max(990, Math.floor(raw / 1000) * 1000 + 990);
+  // si quedó por encima del crudo (ej: raw=500 → 990), bajamos un escalón
+  return rounded > raw && rounded >= 1990 ? rounded - 1000 : rounded;
 }
-
 // =============================================================================
 // OnboardingModal (NUEVO 02-05-2026)
 // -----------------------------------------------------------------------------

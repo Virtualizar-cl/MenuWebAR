@@ -97,9 +97,15 @@
   }
 }
 
-.chartWrapSm { height: 180px; }
-.chartWrapMd { height: 240px; }
-.chartWrapLg { height: 300px; }
+.chartWrapSm {
+  height: 180px;
+}
+.chartWrapMd {
+  height: 240px;
+}
+.chartWrapLg {
+  height: 300px;
+}
 
 .helperText {
   display: flex;
