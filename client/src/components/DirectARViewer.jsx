@@ -1,46 +1,14 @@
-// Visor AR directo via URL. La idea: imprimir un QR por plato apuntando a
-// /ar/:itemId y que el cliente lo escanee desde la mesa. El QR abre esta
-// vista en pantalla completa con el modelo 3D listo para AR sin tener que
-// navegar por el menu.
-//
-// La ruta esta registrada en main.jsx como: /ar/:itemId
-//
-// El itemId puede ser:
-//   - El id del plato ("item-12")
-//   - O el nombre del plato slugificado ("hamburguesa-clasica")
-// Asi el QR puede tener URLs mas legibles si el restaurante quiere.
-
-import { useEffect, useState, useRef } from "react";
+import { useRef } from "react";
 import { useParams } from "react-router-dom";
+import { useMenu } from "../hooks/useMenu";
 
 function DirectARViewer() {
-  const { itemId } = useParams(); // Obtenemos el ID desde la URL
-  const [item, setItem] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { menu, loading } = useMenu();
+  const { itemId } = useParams();
+  const item = menu.find((item) => item.id === itemId);
+
   const modelViewerRef = useRef(null);
 
-  useEffect(() => {
-    // Reutilizamos el endpoint /api/menu igual que App.jsx. Es un poco
-    // wasteful traer todo el menu solo para un plato, pero asi mantenemos
-    // un solo endpoint publico y el caching del browser ayuda.
-    fetch("/api/menu")
-      .then((res) => res.json())
-      .then((data) => {
-        // Buscamos el plato matcheando por id directo o por nombre
-        // slugificado (todo en minusculas, espacios -> guiones).
-        const foundItem = data.menuItems?.find(
-          (m) => m.id === itemId || m.name.toLowerCase().replace(/\s+/g, "-") === itemId,
-        );
-        setItem(foundItem);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Error cargando el plato:", err);
-        setLoading(false);
-      });
-  }, [itemId]);
-
-  // Lanza la AR programaticamente. Usamos la misma API que en MenuCard.jsx.
   const launchAr = () => {
     if (modelViewerRef.current) {
       modelViewerRef.current.activateAR(); // Misma función que usas en MenuCard.jsx
