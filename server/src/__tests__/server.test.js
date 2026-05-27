@@ -8,17 +8,12 @@ process.env.ADMIN_DEFAULT_EMAIL = "test@test.com";
 process.env.ADMIN_DEFAULT_PASSWORD = "TestPassword123";
 
 const ADMIN_FILE = path.join(__dirname, "..", "data", "admin.json");
-const DATA_FILE = path.join(__dirname, "..", "data", "menu.json");
 
 // Guardar y restaurar datos originales
 let originalAdminData;
-let originalMenuData;
 
 if (fs.existsSync(ADMIN_FILE)) {
   originalAdminData = fs.readFileSync(ADMIN_FILE, "utf-8");
-}
-if (fs.existsSync(DATA_FILE)) {
-  originalMenuData = fs.readFileSync(DATA_FILE, "utf-8");
 }
 
 afterAll(() => {
@@ -26,7 +21,6 @@ afterAll(() => {
   if (originalAdminData) {
     fs.writeFileSync(ADMIN_FILE, originalAdminData);
   }
-  fs.writeFileSync(DATA_FILE, originalMenuData);
 });
 
 // Eliminar archivo admin para que initAdmin() lo recree con credenciales de prueba
