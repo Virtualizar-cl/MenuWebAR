@@ -95,10 +95,6 @@ function isSafeImageRef(value) {
   return isSafePath(value) || isSupabaseStorageUrl(value);
 }
 
-function isSafeModelSrc(value) {
-  return isSafePath(value) || isSupabaseStorageUrl(value);
-}
-
 function isNonEmptyString(val) {
   return typeof val === "string" && val.trim().length > 0;
 }
