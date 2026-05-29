@@ -12,7 +12,7 @@ const rateLimit = require("express-rate-limit");
 const multer = require("multer");
 
 // Toda la capa de datos vive en supabaseStore. Este archivo solo se encarga
-// de exponer los endpoints HTTP y validar lo que entra.
+// de exponer los endpoints HTTP y validar lo que entra
 const {
   isSupabaseEnabled,
   loadSupabaseData,
