@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { createImagenAsset, createModeloAsset } from "./api";
 
 export default function AdminUploader({ onUploadComplete }) {
@@ -6,7 +6,16 @@ export default function AdminUploader({ onUploadComplete }) {
   const modelInputRef = useRef(null);
 
   const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState("");
+  const imagePreview = useMemo(() => {
+    if (!imageFile) return "";
+    return URL.createObjectURL(imageFile);
+  }, [imageFile]);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    };
+  }, [imagePreview]);
   const [customImageName, setCustomImageName] = useState("");
 
   const [modelFile, setModelFile] = useState(null);
@@ -17,16 +26,6 @@ export default function AdminUploader({ onUploadComplete }) {
   const [imageURL, setImageURL] = useState("");
   const [modelURL, setModelURL] = useState("");
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!imageFile) {
-      setImagePreview("");
-      return;
-    }
-    const url = URL.createObjectURL(imageFile);
-    setImagePreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [imageFile]);
 
   const handleImageFileChange = (event) => {
     const file = event.target.files?.[0] || null;

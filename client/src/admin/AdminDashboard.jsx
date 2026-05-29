@@ -683,7 +683,7 @@ function UsersModal({ isOpen, onClose }) {
     setError("");
     resetForm();
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isOpen]);
 
   async function refresh() {
@@ -1163,7 +1163,7 @@ function ItemsPanel({
     return "";
   };
 
-  const validateAll = () => {
+  const validateAll = useCallback(() => {
     const errors = {};
     [
       "category",
@@ -1185,7 +1185,7 @@ function ItemsPanel({
       }
     }
     return errors;
-  };
+  }, [form]);
 
   const isFormValid = () => Object.keys(validateAll()).length === 0;
 
@@ -1371,9 +1371,9 @@ function ItemsPanel({
         setError(err.message || "Error al guardar el plato");
         setSaving(false);
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+       
     },
-    [form, isEditingItem, itemsList, onReload, canCreate, canEdit],
+    [form, isEditingItem, itemsList, onReload, canCreate, canEdit, validateAll],
   );
 
   // Atajos de teclado
