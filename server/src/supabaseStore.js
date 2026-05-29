@@ -70,12 +70,10 @@ async function uploadFileToStorage(file, folder) {
   const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${fileExt}`;
   const filePath = `${folder}/${fileName}`;
 
-  const { error } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(filePath, file.buffer, {
-      contentType: file.mimetype,
-      upsert: false,
-    });
+  const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(filePath, file.buffer, {
+    contentType: file.mimetype,
+    upsert: false,
+  });
 
   if (error) throw httpError(500, `Error al subir archivo: ${error.message}`);
 
@@ -120,8 +118,7 @@ function isSupabaseStorageUrl(value) {
       : null;
     if (!supabaseHost) return false;
     return (
-      parsed.hostname === supabaseHost &&
-      parsed.pathname.includes("/storage/v1/object/public/")
+      parsed.hostname === supabaseHost && parsed.pathname.includes("/storage/v1/object/public/")
     );
   } catch {
     return false;

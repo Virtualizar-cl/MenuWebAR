@@ -683,7 +683,6 @@ function UsersModal({ isOpen, onClose }) {
     setError("");
     resetForm();
     refresh();
-     
   }, [isOpen]);
 
   async function refresh() {
@@ -1371,7 +1370,6 @@ function ItemsPanel({
         setError(err.message || "Error al guardar el plato");
         setSaving(false);
       }
-       
     },
     [form, isEditingItem, itemsList, onReload, canCreate, canEdit, validateAll],
   );
