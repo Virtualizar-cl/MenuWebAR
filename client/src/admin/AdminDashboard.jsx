@@ -22,7 +22,7 @@
 //   - unformatPrice       -> helper: extrae digitos de un precio
 //   - ItemsPanel          -> formulario y vista tipo menu de platos
 //   - CategoriesPanel     -> formulario y tabla de categorias
-//   - UploadPanel         -> wrapper del uploader a Cloudinary
+//   - UploadPanel         -> wrapper del uploader a Supabase Storage
 //
 // PERMISOS:
 //   - El super_admin (admin.json) tiene todo y bypasea checks.
@@ -502,7 +502,7 @@ function ImageModal({ isOpen, imagenes, onSelectImage, onDeleteImage, onClose })
     e.stopPropagation();
     if (
       !window.confirm(
-        `¿Eliminar "${img.label}"?\n\nSe borrará de Cloudinary y no podrá recuperarse.`,
+        `¿Eliminar "${img.label}"?\n\nSe borrará de la base de datos y no podrá recuperarse.`,
       )
     ) {
       return;
@@ -590,7 +590,7 @@ function ModelModal({ isOpen, modelos, onSelectModel, onDeleteModel, onClose }) 
     e.stopPropagation();
     if (
       !window.confirm(
-        `¿Eliminar "${model.label}"?\n\nSe borrará de Cloudinary y no podrá recuperarse.`,
+        `¿Eliminar "${model.label}"?\n\nSe borrará de la base de datos y no podrá recuperarse.`,
       )
     ) {
       return;

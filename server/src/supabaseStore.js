@@ -9,6 +9,8 @@
 
 const { createClient } = require("@supabase/supabase-js");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
+const path = require("path");
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -29,6 +31,8 @@ if (!isSupabaseEnabled) {
 
 const HISTORIAL_COLORES_MAX = 8;
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+
+const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "menu-assets";
 
 const PERMISSION_KEYS = [
   "puede_crear_platos",
@@ -53,6 +57,74 @@ function httpError(status, message) {
 function requireClient() {
   if (!supabase) {
     throw httpError(503, "Supabase no esta configurado");
+  }
+}
+
+// =====================================================
+// STORAGE (Supabase Storage)
+// =====================================================
+
+async function uploadFileToStorage(file, folder) {
+  requireClient();
+  const fileExt = path.extname(file.originalname).toLowerCase();
+  const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${fileExt}`;
+  const filePath = `${folder}/${fileName}`;
+
+  const { error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(filePath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false,
+    });
+
+  if (error) throw httpError(500, `Error al subir archivo: ${error.message}`);
+
+  const { data: publicUrl } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+  return publicUrl.publicUrl;
+}
+
+async function deleteStorageFile(url) {
+  if (!url || typeof url !== "string") return null;
+  requireClient();
+
+  try {
+    const parsed = new URL(url);
+    const supabaseHost = process.env.SUPABASE_URL
+      ? new URL(process.env.SUPABASE_URL).hostname
+      : null;
+    if (!supabaseHost || parsed.hostname !== supabaseHost) return null;
+
+    const match = parsed.pathname.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)/);
+    if (!match) return null;
+
+    const filePath = match[1];
+    if (!filePath) return null;
+
+    const { error } = await supabase.storage.from(STORAGE_BUCKET).remove([filePath]);
+    if (error) {
+      console.warn("Error deleting from Storage:", error.message);
+      return { error: error.message };
+    }
+    return { deleted: true };
+  } catch {
+    return null;
+  }
+}
+
+function isSupabaseStorageUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const parsed = new URL(value);
+    const supabaseHost = process.env.SUPABASE_URL
+      ? new URL(process.env.SUPABASE_URL).hostname
+      : null;
+    if (!supabaseHost) return false;
+    return (
+      parsed.hostname === supabaseHost &&
+      parsed.pathname.includes("/storage/v1/object/public/")
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -319,6 +391,31 @@ async function createModeloAsset({ label, url }) {
 
   if (error) throw httpError(500, error.message);
   return mapModeloRow(data);
+}
+
+async function deleteModeloAsset(stringId) {
+  requireClient();
+  const intId = parseIntId(stringId);
+  if (intId == null) throw httpError(400, "id de modelo invalido");
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from("modelos")
+    .select("url_model")
+    .eq("id_model", intId)
+    .single();
+
+  if (fetchErr) throw httpError(404, "Modelo no encontrado");
+
+  const { error: refErr } = await supabase
+    .from("platos")
+    .update({ modelo: null })
+    .eq("modelo", intId);
+  if (refErr) throw httpError(500, refErr.message);
+
+  const { error } = await supabase.from("modelos").delete().eq("id_model", intId);
+  if (error) throw httpError(500, error.message);
+
+  return { deleted: true, url: existing.url_model };
 }
 
 // =====================================================
@@ -726,6 +823,7 @@ module.exports = {
   createImagenAsset,
   deleteImagenAsset,
   createModeloAsset,
+  deleteModeloAsset,
   createItem,
   updateItem,
   deleteItem,
@@ -737,4 +835,9 @@ module.exports = {
   updateUsuario,
   deleteUsuario,
   verifyUsuarioPassword,
+  // Storage
+  uploadFileToStorage,
+  deleteStorageFile,
+  isSupabaseStorageUrl,
+  STORAGE_BUCKET,
 };

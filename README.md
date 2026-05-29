@@ -20,7 +20,7 @@ A React + Express digital restaurant menu for **Route 66** (Santiago, Chile) fea
 | AR       | Google Model Viewer (WebXR, Scene Viewer, Quick Look) |
 | Auth     | JWT + bcrypt                                          |
 | Database | Supabase (PostgreSQL)                                 |
-| Storage  | Cloudinary (images & 3D models)                       |
+| Storage  | Supabase Storage (images & 3D models)                 |
 | Build    | Vite 5                                                |
 | Testing  | Vitest, Testing Library, Supertest                    |
 | Linting  | ESLint 9, Prettier                                    |
@@ -86,18 +86,13 @@ cp server/.env.example server/.env
 | `PORT`                      | Server port (default: 3001)   | No         |
 | `SUPABASE_URL`              | Supabase project URL          | Yes        |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key     | Yes        |
-| `CLOUDINARY_CLOUD_NAME`     | Cloudinary cloud name         | Optional   |
-| `CLOUDINARY_API_KEY`        | Cloudinary API key            | Optional   |
-| `CLOUDINARY_API_SECRET`     | Cloudinary API secret         | Optional   |
+| `SUPABASE_STORAGE_BUCKET`   | Supabase Storage Bucket       | Optional   |
 
 **Client** (`client/.env`):
 
-| Variable                        | Description              | Required   |
-| ------------------------------- | ------------------------ | ---------- |
-| `VITE_API_URL`                  | Backend API URL          | Production |
-| `VITE_CLOUDINARY_CLOUD_NAME`    | Cloudinary cloud name    | Optional   |
-| `VITE_CLOUDINARY_UPLOAD_PRESET` | Cloudinary upload preset | Optional   |
-| `VITE_CLOUDINARY_UPLOAD_FOLDER` | Cloudinary upload folder | Optional   |
+| Variable       | Description     | Required   |
+| -------------- | --------------- | ---------- |
+| `VITE_API_URL` | Backend API URL | Production |
 
 ### Running Locally
 
@@ -201,12 +196,12 @@ See [server/README.md](./server/README.md) for complete API documentation.
 
 **Images & Models:**
 
-| Method | Endpoint                  | Description                  |
-| ------ | ------------------------- | ---------------------------- |
-| POST   | `/api/admin/upload-image` | Upload image (local storage) |
-| POST   | `/api/admin/modelos`      | Register 3D model (AR)       |
-| POST   | `/api/admin/imagenes`     | Register image               |
-| DELETE | `/api/admin/imagenes/:id` | Delete image                 |
+| Method | Endpoint                  | Description                   |
+| ------ | ------------------------- | ----------------------------- |
+| POST   | `/api/admin/modelos`      | Upload and register new model |
+| DELETE | `/api/admin/modelos/:id`  | Delete model                  |
+| POST   | `/api/admin/imagenes`     | Upload and register new image |
+| DELETE | `/api/admin/imagenes/:id` | Delete image                  |
 
 **Color History:**
 
@@ -237,8 +232,6 @@ See [server/README.md](./server/README.md) for complete API documentation.
 
 - Format: **GLB** (binary glTF)
 - Recommended size: under 5 MB for fast mobile loading
-- Place files in `client/public/assets/modelosAR/`
-- Reference in menu items as `/assets/modelosAR/filename.glb`
 
 ## Documentation
 

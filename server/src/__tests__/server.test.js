@@ -2,14 +2,17 @@ const request = require("supertest");
 const fs = require("fs");
 const path = require("path");
 
-// Establecer variables de entorno de prueba antes de importar la app
+// Override env BEFORE dotenv loads (dotenv won't override existing values)
 process.env.JWT_SECRET = "test-secret-for-testing-only";
 process.env.ADMIN_DEFAULT_EMAIL = "test@test.com";
 process.env.ADMIN_DEFAULT_PASSWORD = "TestPassword123";
+// Set test Supabase URL so isSupabaseStorageUrl can validate; disable the
+// client by leaving SERVICE_ROLE_KEY empty (dotenv won't override a set var).
+process.env.SUPABASE_URL = "https://test-project.supabase.co";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "";
 
 const ADMIN_FILE = path.join(__dirname, "..", "data", "admin.json");
 
-// Guardar y restaurar datos originales
 let originalAdminData;
 
 if (fs.existsSync(ADMIN_FILE)) {
@@ -17,13 +20,11 @@ if (fs.existsSync(ADMIN_FILE)) {
 }
 
 afterAll(() => {
-  // Restaurar datos originales
   if (originalAdminData) {
     fs.writeFileSync(ADMIN_FILE, originalAdminData);
   }
 });
 
-// Eliminar archivo admin para que initAdmin() lo recree con credenciales de prueba
 if (fs.existsSync(ADMIN_FILE)) {
   fs.unlinkSync(ADMIN_FILE);
 }
@@ -156,32 +157,49 @@ describe("API Endpoints", () => {
         expect(res.body.error).toMatch(/Supabase no esta configurado/i);
       });
 
-      it("registers a Cloudinary model in /api/admin/modelos", async () => {
+      it("rejects item with invalid image URL", async () => {
         const res = await request(app)
-          .post("/api/admin/modelos")
+          .post("/api/admin/items")
           .set("Authorization", `Bearer ${token}`)
           .send({
-            id: "test_model_cloudinary",
-            label: "Modelo Test Cloudinary",
-            url: "https://res.cloudinary.com/dxpam0kqa/raw/upload/v1/menu/models/test-model.glb",
+            id: "test-item-image",
+            category: "entradas",
+            name: "Test",
+            price: "$1000",
+            image: "https://evil.com/phish.jpg",
           });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/Imagen no permitida/i);
+      });
 
+      it("accepts item with Supabase Storage image URL", async () => {
+        const res = await request(app)
+          .post("/api/admin/items")
+          .set("Authorization", `Bearer ${token}`)
+          .send({
+            id: "test-item-supabase-img",
+            category: "entradas",
+            name: "Test",
+            price: "$1000",
+            image:
+              "https://test-project.supabase.co/storage/v1/object/public/menu-assets/images/test.jpg",
+          });
         expect(res.status).toBe(503);
         expect(res.body.error).toMatch(/Supabase no esta configurado/i);
       });
 
-      it("registers a Cloudinary image in /api/admin/imagenes", async () => {
+      it("rejects image upload without file", async () => {
         const res = await request(app)
           .post("/api/admin/imagenes")
-          .set("Authorization", `Bearer ${token}`)
-          .send({
-            id: "test_image_cloudinary",
-            label: "Imagen Test Cloudinary",
-            url: "https://res.cloudinary.com/dxpam0kqa/image/upload/v1/menu/images/test-image.jpg",
-          });
+          .set("Authorization", `Bearer ${token}`);
+        expect(res.status).toBe(400);
+      });
 
-        expect(res.status).toBe(503);
-        expect(res.body.error).toMatch(/Supabase no esta configurado/i);
+      it("rejects model upload without file", async () => {
+        const res = await request(app)
+          .post("/api/admin/modelos")
+          .set("Authorization", `Bearer ${token}`);
+        expect(res.status).toBe(400);
       });
     });
   });

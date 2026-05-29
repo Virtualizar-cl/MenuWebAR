@@ -123,13 +123,33 @@ export const deleteItem = (id) => del("/admin/items", id);
 
 // --- Modelos AR ---
 export const getModelos = () => get("/modelos");
-export const createModeloAsset = (p) => post("/admin/modelos", p);
 export const deleteModelo = (id) => del("/admin/modelos", id);
 
 // --- Imagenes ---
 export const getImagenes = () => get("/imagenes");
-export const createImagenAsset = (p) => post("/admin/imagenes", p);
 export const deleteImagen = (id) => del("/admin/imagenes", id);
+
+// --- Upload multipart (a backend que sube a Supabase Storage) ---
+function uploadFormData(path, file, name) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("name", name);
+  const token = localStorage.getItem("admin_token");
+  return fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  }).then(async (res) => {
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Error en ${path}`);
+    }
+    return res.json();
+  });
+}
+
+export const createImagenAsset = (file, name) => uploadFormData("/admin/imagenes", file, name);
+export const createModeloAsset = (file, name) => uploadFormData("/admin/modelos", file, name);
 
 // --- Historial de colores ---
 export const getColorHistorial = () => get("/admin/historial-colores");

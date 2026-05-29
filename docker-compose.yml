@@ -5,9 +5,6 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: http://localhost:3001/api
-        VITE_CLOUDINARY_CLOUD_NAME: your_cloud_name
-        VITE_CLOUDINARY_UPLOAD_PRESET: upload_preset
-        VITE_CLOUDINARY_UPLOAD_FOLDER: uploads
     depends_on:
       - server
     ports:
@@ -26,6 +23,4 @@ services:
       ADMIN_DEFAULT_PASSWORD: test1234
       SUPABASE_URL: https://your_project.supabase.co
       SUPABASE_SERVICE_ROLE_KEY: your_supabase_secret
-      CLOUDINARY_CLOUD_NAME:
-      CLOUDINARY_API_KEY:
-      CLOUDINARY_API_SECRET:
+      SUPABASE_STORAGE_BUCKET: menu-assets

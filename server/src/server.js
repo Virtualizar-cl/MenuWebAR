@@ -10,8 +10,6 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
-const crypto = require("crypto");
-const cloudinary = require("cloudinary").v2;
 
 // Toda la capa de datos vive en supabaseStore. Este archivo solo se encarga
 // de exponer los endpoints HTTP y validar lo que entra.
@@ -21,6 +19,7 @@ const {
   createModeloAsset: createSupabaseModeloAsset,
   createImagenAsset: createSupabaseImagenAsset,
   deleteImagenAsset: deleteSupabaseImagenAsset,
+  deleteModeloAsset: deleteSupabaseModeloAsset,
   createCategory: createSupabaseCategory,
   updateCategory: updateSupabaseCategory,
   deleteCategory: deleteSupabaseCategory,
@@ -37,6 +36,10 @@ const {
   updateUsuario,
   deleteUsuario,
   verifyUsuarioPassword,
+  // storage
+  uploadFileToStorage,
+  deleteStorageFile,
+  isSupabaseStorageUrl,
 } = require("./supabaseStore");
 
 const loggingMiddleware = require("./middlewares/loggingMiddleware");
@@ -59,88 +62,11 @@ if (!JWT_SECRET) {
 
 const jwtSecret = JWT_SECRET || "dev-only-insecure-secret";
 
-// --- Cloudinary ---
-// Configuracion server side. Se usa solo para BORRAR archivos de Cloudinary
-// cuando se elimina una imagen. Los uploads los hace el frontend directo
-// contra Cloudinary con un preset unsigned.
-const cloudinaryEnabled = Boolean(
-  process.env.CLOUDINARY_CLOUD_NAME &&
-  process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET,
-);
-
-if (cloudinaryEnabled) {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true,
-  });
-} else {
-  console.warn("WARNING: Cloudinary no configurado. El borrado solo afectara Supabase.");
-}
-
-// Dada una URL de Cloudinary, extrae el "public_id" que es lo que pide la API
-// para borrar el archivo. Ejemplo de URL:
-// https://res.cloudinary.com/xxx/image/upload/v1234/uploads/foto.jpg
-// El public_id seria: uploads/foto
-function extractCloudinaryPublicId(url) {
-  if (typeof url !== "string" || !url.includes("res.cloudinary.com")) return null;
-  try {
-    const parsed = new URL(url);
-    const parts = parsed.pathname.split("/").filter(Boolean);
-    const uploadIdx = parts.indexOf("upload");
-    if (uploadIdx === -1) return null;
-    let afterUpload = parts.slice(uploadIdx + 1);
-    // El primer segmento despues de "upload" puede ser la version (v1234).
-    // La saltamos porque no forma parte del public_id.
-    if (afterUpload[0] && /^v\d+$/.test(afterUpload[0])) {
-      afterUpload = afterUpload.slice(1);
-    }
-    if (afterUpload.length === 0) return null;
-    const last = afterUpload[afterUpload.length - 1];
-    // Quitamos la extension del archivo
-    const lastNoExt = last.replace(/\.[^.]+$/, "");
-    return [...afterUpload.slice(0, -1), lastNoExt].join("/");
-  } catch {
-    return null;
-  }
-}
-
 // --- Multer ---
-// Multer se usa SOLO para el endpoint /api/admin/upload-image, que guarda
-// imagenes localmente en /public/assets/IMG. Para Cloudinary, el frontend sube
-// directo y este backend solo recibe la URL.
-const uploadDir = path.join(__dirname, "..", "public", "assets", "IMG");
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Le damos a cada archivo un nombre unico con timestamp + bytes aleatorios,
-// asi si suben dos archivos con el mismo nombre no se pisan.
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const name = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
-    cb(null, name);
-  },
-});
-
-const fileFilter = (req, file, cb) => {
-  const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
-  if (allowedMimes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error("Solo se permiten imágenes (JPEG, PNG, WebP, GIF)"));
-  }
-};
-
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB tope
+// Almacena en memoria para poder subir el buffer a Supabase Storage.
+const uploadMemory = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB — suficiente para .glb
 });
 
 // --- Validación ---
@@ -151,50 +77,26 @@ const upload = multer({
 // Cualquier otro path se rechaza para evitar que alguien nos haga servir
 // archivos fuera de esas carpetas.
 const SAFE_PATH_RE = /^\/assets\/(modelosAR|IMG)\//;
-const CLOUDINARY_HOST = "res.cloudinary.com";
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 const CARD_MESSAGE_MAX = 40;
 
 function isSafePath(p) {
   if (!p) return true;
   if (typeof p !== "string") return false;
-  // ".." podria servir para escapar de la carpeta permitida
   if (p.includes("..")) return false;
   if (!p.startsWith("/")) return false;
   return SAFE_PATH_RE.test(p);
 }
 
-// Verifica que una URL sea realmente de Cloudinary y del tipo de recurso
-// esperado (image, raw, etc). Asi evitamos que alguien guarde un link a
-// cualquier otro servidor disfrazado de imagen.
-function isCloudinaryUploadUrl(value, resourceType) {
-  if (typeof value !== "string" || !value.trim()) return false;
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== "https:") return false;
-    if (parsed.hostname !== CLOUDINARY_HOST) return false;
-    const pathName = parsed.pathname || "";
-    if (resourceType) {
-      return pathName.includes(`/${resourceType}/upload/`);
-    }
-    return pathName.includes("/upload/");
-  } catch {
-    return false;
-  }
-}
-
+// Acepta URLs de Supabase Storage además de paths locales.
+// Las URLs de Cloudinary existentes en la BD siguen funcionando (no se validan
+// al editar porque el valor ya está almacenado, solo se validan al crear).
 function isSafeImageRef(value) {
-  return isSafePath(value) || isCloudinaryUploadUrl(value, "image");
+  return isSafePath(value) || isSupabaseStorageUrl(value);
 }
 
-// Los .glb se suben a Cloudinary como "raw". Aunque tambien aceptamos "image"
-// porque en algunas configuraciones Cloudinary los clasifica asi.
 function isSafeModelSrc(value) {
-  return (
-    isSafePath(value) ||
-    isCloudinaryUploadUrl(value, "raw") ||
-    isCloudinaryUploadUrl(value, "image")
-  );
+  return isSafePath(value) || isSupabaseStorageUrl(value);
 }
 
 function isNonEmptyString(val) {
@@ -553,122 +455,103 @@ app.get("/api/auth/verify", authMiddleware, (req, res) => {
 // Todas estas rutas requieren JWT valido (authMiddleware) y un permiso
 // especifico segun la accion.
 
-// Upload de imagenes LOCAL (no Cloudinary). Queda como legacy por si hay
-// deploys sin Cloudinary configurado, pero el flujo normal del admin usa
-// Cloudinary directo desde el frontend.
-app.post(
-  "/api/admin/upload-image",
-  authMiddleware,
-  requirePermission("puede_subir_archivos"),
-  (req, res) => {
-    upload.single("image")(req, res, (err) => {
-      if (err) {
-        if (err instanceof multer.MulterError) {
-          if (err.code === "LIMIT_FILE_SIZE") {
-            return res.status(400).json({ error: "La imagen es muy grande (máximo 5MB)" });
-          }
-          return res.status(400).json({ error: "Error al subir la imagen" });
-        }
-        return res.status(400).json({ error: err.message || "Error al subir la imagen" });
-      }
-
-      if (!req.file) {
-        return res.status(400).json({ error: "No se subió ninguna imagen" });
-      }
-
-      const imagePath = `/assets/IMG/${req.file.filename}`;
-      res.json({ image: imagePath });
-    });
-  },
-);
-
-// Guarda la metadata de un modelo AR en Supabase. OJO: el archivo .glb ya fue
-// subido a Cloudinary desde el frontend, aca solo registramos la URL en BD
-// para poder listarlo despues.
-app.post(
-  "/api/admin/modelos",
-  authMiddleware,
-  requirePermission("puede_subir_archivos"),
-  (req, res) => {
-    const { id, name, label, url, src, secure_url, secureUrl } = req.body || {};
-
-    // Aceptamos varios nombres de campo por compatibilidad con distintos
-    // clientes (Cloudinary devuelve secure_url, nosotros usamos src o url).
-    const modeloId = typeof (id || name) === "string" ? (id || name).trim() : "";
-    const modeloSrc =
-      typeof (url || src || secure_url || secureUrl) === "string"
-        ? (url || src || secure_url || secureUrl).trim()
-        : "";
-    const modeloLabel =
-      typeof (label || name || modeloId) === "string" ? (label || name || modeloId).trim() : "";
-
-    if (!isValidModeloId(modeloId)) {
-      return res
-        .status(400)
-        .json({ error: "id de modelo invalido (solo letras, numeros, guion y guion bajo)" });
-    }
-    if (!isNonEmptyString(modeloLabel)) {
-      return res.status(400).json({ error: "label es requerido" });
-    }
-    if (!isNonEmptyString(modeloSrc)) {
-      return res.status(400).json({ error: "url es requerida" });
-    }
-    if (!isSafeModelSrc(modeloSrc)) {
-      return res.status(400).json({ error: "URL de modelo no permitida" });
-    }
-
-    if (!isSupabaseEnabled) return requireSupabaseDataSource(res);
-
-    createSupabaseModeloAsset({ id, name, label: modeloLabel, url: modeloSrc })
-      .then((newModelo) => res.status(201).json(newModelo))
-      .catch((error) => handleSupabaseRouteError(res, error));
-  },
-);
-
-// Misma logica que modelos pero para imagenes.
+// Sube un archivo de imagen a Supabase Storage y lo registra en la BD.
+// Recibe multipart: "file" (imagen), "name" (nombre descriptivo).
 app.post(
   "/api/admin/imagenes",
   authMiddleware,
   requirePermission("puede_subir_archivos"),
   (req, res) => {
-    const { id, name, label, url, src, secure_url, secureUrl } = req.body || {};
+    uploadMemory.single("file")(req, res, async (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(400).json({ error: "El archivo es muy grande (máximo 50MB)" });
+          }
+          return res.status(400).json({ error: "Error al subir el archivo" });
+        }
+        return res.status(400).json({ error: err.message || "Error al subir el archivo" });
+      }
 
-    const imagenId = typeof (id || name) === "string" ? (id || name).trim() : "";
-    const imagenSrc =
-      typeof (url || src || secure_url || secureUrl) === "string"
-        ? (url || src || secure_url || secureUrl).trim()
-        : "";
-    const imagenLabel =
-      typeof (label || name || imagenId) === "string" ? (label || name || imagenId).trim() : "";
+      if (!req.file) {
+        return res.status(400).json({ error: "No se subió ningún archivo" });
+      }
 
-    if (!isValidId(imagenId)) {
-      return res
-        .status(400)
-        .json({ error: "id de imagen invalido (solo letras, numeros, guion y guion bajo)" });
-    }
-    if (!isNonEmptyString(imagenLabel)) {
-      return res.status(400).json({ error: "label es requerido" });
-    }
-    if (!isNonEmptyString(imagenSrc)) {
-      return res.status(400).json({ error: "url es requerida" });
-    }
-    if (!isSafeImageRef(imagenSrc)) {
-      return res.status(400).json({ error: "URL de imagen no permitida" });
-    }
+      const allowedMimes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
+      if (!allowedMimes.includes(req.file.mimetype)) {
+        return res.status(400).json({ error: "Solo se permiten imágenes (JPEG, PNG, WebP, GIF)" });
+      }
 
-    if (!isSupabaseEnabled) return requireSupabaseDataSource(res);
+      const name = req.body.name
+        ? req.body.name.trim()
+        : req.file.originalname.replace(/\.[^/.]+$/, "").trim();
 
-    createSupabaseImagenAsset({ id, name, label: imagenLabel, url: imagenSrc })
-      .then((newImagen) => res.status(201).json(newImagen))
-      .catch((error) => handleSupabaseRouteError(res, error));
+      if (!name) {
+        return res.status(400).json({ error: "El nombre de la imagen es requerido" });
+      }
+
+      if (!isSupabaseEnabled) return requireSupabaseDataSource(res);
+
+      try {
+        const url = await uploadFileToStorage(req.file, "images");
+        const saved = await createSupabaseImagenAsset({ label: name, url });
+        return res.status(201).json(saved);
+      } catch (error) {
+        return handleSupabaseRouteError(res, error);
+      }
+    });
   },
 );
 
-// Borrado de imagen: hace DOS cosas.
-// 1. Borra la fila en Supabase (y limpia las referencias en platos).
-// 2. Si la URL era de Cloudinary, tambien borra el archivo alla para no dejar
-//    basura. Si Cloudinary falla, igual devolvemos OK porque lo importante
-//    ya se elimino de la BD.
+// Sube un modelo AR (.glb) a Supabase Storage y lo registra en la BD.
+// Recibe multipart: "file" (.glb), "name" (nombre descriptivo).
+app.post(
+  "/api/admin/modelos",
+  authMiddleware,
+  requirePermission("puede_subir_archivos"),
+  (req, res) => {
+    uploadMemory.single("file")(req, res, async (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(400).json({ error: "El archivo es muy grande (máximo 50MB)" });
+          }
+          return res.status(400).json({ error: "Error al subir el archivo" });
+        }
+        return res.status(400).json({ error: err.message || "Error al subir el archivo" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No se subió ningún archivo" });
+      }
+
+      if (!req.file.originalname.toLowerCase().endsWith(".glb")) {
+        return res.status(400).json({ error: "El modelo AR debe tener extensión .glb" });
+      }
+
+      const name = req.body.name
+        ? req.body.name.trim()
+        : req.file.originalname.replace(/\.[^/.]+$/, "").trim();
+
+      if (!name) {
+        return res.status(400).json({ error: "El nombre del modelo es requerido" });
+      }
+
+      if (!isSupabaseEnabled) return requireSupabaseDataSource(res);
+
+      try {
+        const url = await uploadFileToStorage(req.file, "models");
+        const saved = await createSupabaseModeloAsset({ label: name, url });
+        return res.status(201).json(saved);
+      } catch (error) {
+        return handleSupabaseRouteError(res, error);
+      }
+    });
+  },
+);
+
+// Borrado de imagen: elimina de la BD y si la URL es de Supabase Storage
+// tambien borra el archivo para no dejar basura.
 app.delete(
   "/api/admin/imagenes/:id",
   authMiddleware,
@@ -678,27 +561,28 @@ app.delete(
 
     try {
       const { url } = await deleteSupabaseImagenAsset(req.params.id);
+      const storageResult = url ? await deleteStorageFile(url) : null;
 
-      let cloudinaryResult = null;
-      if (cloudinaryEnabled && url) {
-        const publicId = extractCloudinaryPublicId(url);
-        if (publicId) {
-          try {
-            cloudinaryResult = await cloudinary.uploader.destroy(publicId, {
-              resource_type: "image",
-              invalidate: true,
-            });
-          } catch (cloudErr) {
-            console.error("Error borrando de Cloudinary:", cloudErr?.message || cloudErr);
-            cloudinaryResult = { error: cloudErr?.message || "Error Cloudinary" };
-          }
-        }
-      }
+      return res.json({ message: "Imagen eliminada", storage: storageResult });
+    } catch (error) {
+      return handleSupabaseRouteError(res, error);
+    }
+  },
+);
 
-      return res.json({
-        message: "Imagen eliminada",
-        cloudinary: cloudinaryResult,
-      });
+// Borrado de modelo: elimina de la BD y del storage si corresponde.
+app.delete(
+  "/api/admin/modelos/:id",
+  authMiddleware,
+  requirePermission("puede_eliminar_archivos"),
+  async (req, res) => {
+    if (!isSupabaseEnabled) return requireSupabaseDataSource(res);
+
+    try {
+      const { url } = await deleteSupabaseModeloAsset(req.params.id);
+      const storageResult = url ? await deleteStorageFile(url) : null;
+
+      return res.json({ message: "Modelo eliminado", storage: storageResult });
     } catch (error) {
       return handleSupabaseRouteError(res, error);
     }

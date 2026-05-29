@@ -22,17 +22,15 @@ cp server/.env.example server/.env
 
 ### Variables
 
-| Variable                    | Description                                  | Required   |
-| --------------------------- | -------------------------------------------- | ---------- |
-| `PORT`                      | Server port (default: 3001)                  | No         |
-| `JWT_SECRET`                | Secret for JWT tokens (32+ chars)            | Production |
-| `ADMIN_DEFAULT_EMAIL`       | Initial admin email (used on first run)      | First run  |
-| `ADMIN_DEFAULT_PASSWORD`    | Initial admin password (used on first run)   | First run  |
-| `SUPABASE_URL`              | Supabase project URL                         | Yes        |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key                    | Yes        |
-| `CLOUDINARY_CLOUD_NAME`     | Cloudinary cloud name (for media management) | Optional   |
-| `CLOUDINARY_API_KEY`        | Cloudinary API key                           | Optional   |
-| `CLOUDINARY_API_SECRET`     | Cloudinary API secret                        | Optional   |
+| Variable                    | Description                                | Required   |
+| --------------------------- | ------------------------------------------ | ---------- |
+| `PORT`                      | Server port (default: 3001)                | No         |
+| `JWT_SECRET`                | Secret for JWT tokens (32+ chars)          | Production |
+| `ADMIN_DEFAULT_EMAIL`       | Initial admin email (used on first run)    | First run  |
+| `ADMIN_DEFAULT_PASSWORD`    | Initial admin password (used on first run) | First run  |
+| `SUPABASE_URL`              | Supabase project URL                       | Yes        |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key                  | Yes        |
+| `SUPABASE_STORAGE_BUCKET`   | Supabase Storage Bucket                    | Optional   |
 
 Generate a secure JWT_SECRET:
 
@@ -67,9 +65,7 @@ docker run -p 3001:3001 \
   -e ADMIN_DEFAULT_PASSWORD=your-password \
   -e SUPABASE_URL=https://your-project.supabase.co \
   -e SUPABASE_SERVICE_ROLE_KEY=your-key \
-  -e CLOUDINARY_CLOUD_NAME=your_cloud_name \
-  -e CLOUDINARY_API_KEY=your_api_key \
-  -e CLOUDINARY_API_SECRET=your_api_secret \
+  -e SUPABASE_STORAGE_BUCKET=menu-assets \
   menuwebar-server
 ```
 
@@ -77,8 +73,6 @@ docker run -p 3001:3001 \
 
 ```
 ├── public
-│   └── assets
-│       └── IMG
 ├── src
 │   ├── __tests__
 │   │   └── server.test.js
@@ -144,12 +138,12 @@ docker run -p 3001:3001 \
 
 **Images & Models:**
 
-| Method | Endpoint                  | Description                  |
-| ------ | ------------------------- | ---------------------------- |
-| POST   | `/api/admin/upload-image` | Upload image (local storage) |
-| POST   | `/api/admin/modelos`      | Register 3D model (AR)       |
-| POST   | `/api/admin/imagenes`     | Register image               |
-| DELETE | `/api/admin/imagenes/:id` | Delete image                 |
+| Method | Endpoint                  | Description                   |
+| ------ | ------------------------- | ----------------------------- |
+| POST   | `/api/admin/modelos`      | Upload and register new model |
+| DELETE | `/api/admin/modelos/:id`  | Delete model                  |
+| POST   | `/api/admin/imagenes`     | Upload and register new image |
+| DELETE | `/api/admin/imagenes/:id` | Delete image                  |
 
 **Color History:**
 

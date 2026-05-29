@@ -22,18 +22,9 @@ cp client/.env.example client/.env
 
 ### Variables
 
-| Variable                        | Description                                       | Required   |
-| ------------------------------- | ------------------------------------------------- | ---------- |
-| `VITE_API_URL`                  | Backend API URL (e.g., http://localhost:3001/api) | Production |
-| `VITE_CLOUDINARY_CLOUD_NAME`    | Cloudinary cloud name                             | Optional   |
-| `VITE_CLOUDINARY_UPLOAD_PRESET` | Cloudinary unsigned upload preset                 | Optional   |
-| `VITE_CLOUDINARY_UPLOAD_FOLDER` | Cloudinary folder for uploads                     | Optional   |
-
-### Getting Cloudinary Credentials
-
-1. **Cloud Name**: Dashboard → Product Environments → Copy "Cloud Name"
-2. **Upload Preset**: Settings → Upload → Add upload preset → Set "Mode" to "Unsigned" → Copy name
-3. **Upload Folder**: Go to Assets → Folders → Create or use existing folder → Copy folder name
+| Variable       | Description                                       | Required   |
+| -------------- | ------------------------------------------------- | ---------- |
+| `VITE_API_URL` | Backend API URL (e.g., http://localhost:3001/api) | Production |
 
 ## Scripts
 
@@ -53,9 +44,6 @@ npm run test     # Run tests
 cd client
 docker build -t menuwebar-client \
   --build-arg VITE_API_URL=http://localhost:3001/api \
-  --build-arg VITE_CLOUDINARY_CLOUD_NAME=your_cloud \
-  --build-arg VITE_CLOUDINARY_UPLOAD_PRESET=your_preset \
-  --build-arg VITE_CLOUDINARY_UPLOAD_FOLDER=uploads \
   .
 ```
 
@@ -70,13 +58,6 @@ docker run -p 3000:3000 menuwebar-client
 ```
 client/
 ├── public
-│   └── assets
-│       ├── IMG
-│       │   ├── comida.jfif
-│       │   └── copia.png
-│       └── references
-│           ├── esquema relacional.svg
-│           └── logo-contraste.7ddc12ebe66a8491be1140703728458f.svg
 ├── src
 │   ├── admin
 │   │   ├── AdminDashboard.jsx
@@ -194,18 +175,18 @@ client/
 
 - **Dashboard** — View stats, analytics, and activity logs
 - **CRUD Operations** — Manage categories and menu items
-- **Media Upload** — Upload images and 3D models to Cloudinary
+- **Media Upload** — Upload images and 3D models to Supabase Storage
 - **Activity Tracking** — Log and view user interactions
 
 ## AR Models
 
-3D models for AR visualization are stored in **Cloudinary**, not locally.
+3D models for AR visualization are stored in **Supabase Storage**, not locally.
 
 Requirements:
 
 - **Format**: GLB (binary glTF)
 - **Size**: Under 5 MB recommended for fast loading
-- **Storage**: Cloudinary (uploaded via admin panel)
+- **Storage**: Supabase Storage (uploaded via admin panel)
 - **Usage**: Models are registered via `/api/admin/modelos` endpoint and linked to menu items by model ID
 
 ## Testing

@@ -1,56 +1,10 @@
-// Componente que sube archivos DIRECTAMENTE a Cloudinary desde el navegador
-// (sin pasar por nuestro backend). Esto lo hacemos asi porque Cloudinary tiene
-// un sistema de "unsigned upload presets" que permite que clientes publicos
-// suban archivos sin necesidad de firmar con la API secret. El secret nunca
-// sale del server.
-//
-// Flujo:
-//   1. User elige archivo
-//   2. Frontend manda a cloudinary.com/v1_1/xxx/image(o raw)/upload
-//   3. Cloudinary devuelve la URL publica
-//   4. Frontend llama a nuestro backend para registrar esa URL en Supabase
-//
-// Cuando se borra, el backend borra de Cloudinary ademas de Supabase (ahi si
-// necesita el API secret).
-
 import { useRef, useState, useEffect } from "react";
 import { createImagenAsset, createModeloAsset } from "./api";
 
-// Las credenciales de Cloudinary vienen del .env. Los defaults son los del
-// proyecto Route 66, dejamos fallback por si el .env no esta cargado bien.
-const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "dxpam0kqa";
-const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "HublabMenuWebAr";
-const CLOUDINARY_UPLOAD_FOLDER = import.meta.env.VITE_CLOUDINARY_UPLOAD_FOLDER || "uploads";
-// Los .glb van a una subcarpeta /models para tenerlos separados de las fotos.
-const CLOUDINARY_MODELS_FOLDER = `${CLOUDINARY_UPLOAD_FOLDER}/models`;
-
-// Construye un id unico para el asset. Toma el nombre del archivo, lo limpia
-// (solo letras/numeros/guiones, minusculas) y le agrega un timestamp en base
-// 36 al final para garantizar unicidad aunque se suba el mismo archivo dos
-// veces.
-function buildAssetId(fileName, prefix) {
-  const baseName = fileName.replace(/\.[^/.]+$/, "").toLowerCase();
-  const sanitized = baseName
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  const suffix = Date.now().toString(36);
-  return `${prefix}_${sanitized || "asset"}_${suffix}`;
-}
-
-// Toma "hamburguesa.jpg" y devuelve "hamburguesa" como label legible.
-function buildAssetLabel(fileName) {
-  return fileName.replace(/\.[^/.]+$/, "").trim() || "Archivo";
-}
-
 export default function AdminUploader({ onUploadComplete }) {
-  // Refs a los inputs file para poder limpiarlos programaticamente despues
-  // del upload (sin esto, el input recordaria el ultimo archivo elegido).
   const imageInputRef = useRef(null);
   const modelInputRef = useRef(null);
 
-  // Estados separados para imagen y modelo porque el uploader maneja los dos
-  // flujos en paralelo (el user puede tener ambos selects abiertos).
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
   const [customImageName, setCustomImageName] = useState("");
@@ -64,11 +18,8 @@ export default function AdminUploader({ onUploadComplete }) {
   const [modelURL, setModelURL] = useState("");
   const [error, setError] = useState("");
 
-  // Genera el preview de la imagen con URL.createObjectURL. Es importante
-  // revocarla en el cleanup para no filtrar memoria (son URLs en blob).
   useEffect(() => {
     if (!imageFile) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setImagePreview("");
       return;
     }
@@ -77,59 +28,10 @@ export default function AdminUploader({ onUploadComplete }) {
     return () => URL.revokeObjectURL(url);
   }, [imageFile]);
 
-  // Mensaje de error mas claro para el caso mas tipico: el preset no existe.
-  // Suele pasar cuando se olvidaron de crearlo en el dashboard de Cloudinary.
-  const handleUploadError = (message) => {
-    if (message.toLowerCase().includes("upload preset not found")) {
-      return `Cloudinary no encuentra el preset "${CLOUDINARY_UPLOAD_PRESET}". Crealo como Unsigned en Settings > Upload > Upload presets.`;
-    }
-    return message;
-  };
-
-  // Chequea que las env vars esten definidas antes de intentar subir. Si
-  // faltan, el mensaje le dice al user que reinicie Vite (porque Vite lee las
-  // env vars solo al arrancar).
-  const ensureCloudinaryConfig = () => {
-    const missingVariables = [];
-    if (!CLOUDINARY_CLOUD_NAME) missingVariables.push("VITE_CLOUDINARY_CLOUD_NAME");
-    if (!CLOUDINARY_UPLOAD_PRESET) missingVariables.push("VITE_CLOUDINARY_UPLOAD_PRESET");
-
-    if (missingVariables.length > 0) {
-      setError(
-        `Falta configurar: ${missingVariables.join(", ")}. Si acabas de editar .env, reinicia npm run dev.`,
-      );
-      return false;
-    }
-    return true;
-  };
-
-  // Funcion core del upload. resourceType es "image" para imagenes o "raw"
-  // para .glb (Cloudinary trata los 3D como recursos raw porque no son
-  // manipulables como imagen).
-  const uploadToCloudinary = async (file, resourceType, folder) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-    formData.append("folder", folder);
-
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`,
-      { method: "POST", body: formData },
-    );
-
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload?.error?.message || "Error al subir archivo a Cloudinary");
-    }
-    return payload.secure_url;
-  };
-
   const handleImageFileChange = (event) => {
     const file = event.target.files?.[0] || null;
     setImageFile(file);
-    // Pre-llenamos el input del nombre con el nombre del archivo, el user
-    // puede editarlo despues si quiere uno mas descriptivo.
-    setCustomImageName(file ? buildAssetLabel(file.name) : "");
+    setCustomImageName(file ? file.name.replace(/\.[^/.]+$/, "").trim() || "Imagen" : "");
     setImageURL("");
     setError("");
   };
@@ -139,15 +41,13 @@ export default function AdminUploader({ onUploadComplete }) {
     setCustomImageName("");
     setImageURL("");
     setError("");
-    // Reseteamos el input file para que el user pueda elegir el MISMO archivo
-    // de nuevo si quiere (sin esto, onChange no se dispara).
     if (imageInputRef.current) imageInputRef.current.value = "";
   };
 
   const handleModelFileChange = (event) => {
     const file = event.target.files?.[0] || null;
     setModelFile(file);
-    setCustomModelName(file ? buildAssetLabel(file.name) : "");
+    setCustomModelName(file ? file.name.replace(/\.[^/.]+$/, "").trim() || "Modelo" : "");
     setModelURL("");
     setError("");
   };
@@ -160,11 +60,6 @@ export default function AdminUploader({ onUploadComplete }) {
     if (modelInputRef.current) modelInputRef.current.value = "";
   };
 
-  // Flujo completo de subir imagen:
-  //   1. Sube a Cloudinary -> recibe URL
-  //   2. Registra en BD via nuestro backend
-  //   3. Notifica al dashboard para que recargue
-  //   4. Limpia el form
   const handleImageUpload = async () => {
     if (!imageFile) {
       setError("Selecciona una imagen primero.");
@@ -174,42 +69,32 @@ export default function AdminUploader({ onUploadComplete }) {
       setError("El nombre de la imagen no puede estar vacío.");
       return;
     }
-    if (!ensureCloudinaryConfig()) return;
 
     setImageUploading(true);
     setError("");
     setImageURL("");
 
     try {
-      const url = await uploadToCloudinary(imageFile, "image", CLOUDINARY_UPLOAD_FOLDER);
-      const savedImage = await createImagenAsset({
-        id: buildAssetId(customImageName, "img"),
-        label: customImageName.trim(),
-        url,
-      });
+      const savedImage = await createImagenAsset(imageFile, customImageName.trim());
 
-      setImageURL(savedImage.src || url);
+      setImageURL(savedImage.src);
       onUploadComplete?.(savedImage, "image");
 
       setImageFile(null);
       setCustomImageName("");
       if (imageInputRef.current) imageInputRef.current.value = "";
     } catch (uploadError) {
-      const message = uploadError?.message || "No se pudo subir la imagen";
-      setError(handleUploadError(message));
+      setError(uploadError?.message || "No se pudo subir la imagen");
     } finally {
       setImageUploading(false);
     }
   };
 
-  // Mismo flujo que la imagen pero con validacion extra de extension .glb.
   const handleModelUpload = async () => {
     if (!modelFile) {
       setError("Selecciona un modelo .glb primero.");
       return;
     }
-    // Cloudinary acepta cualquier archivo como "raw", pero nosotros solo
-    // queremos .glb para que el model-viewer los pueda cargar.
     if (!modelFile.name.toLowerCase().endsWith(".glb")) {
       setError("El modelo AR debe tener extensión .glb");
       return;
@@ -218,46 +103,35 @@ export default function AdminUploader({ onUploadComplete }) {
       setError("El nombre del modelo no puede estar vacío.");
       return;
     }
-    if (!ensureCloudinaryConfig()) return;
 
     setModelUploading(true);
     setError("");
     setModelURL("");
 
     try {
-      const url = await uploadToCloudinary(modelFile, "raw", CLOUDINARY_MODELS_FOLDER);
-      const savedModel = await createModeloAsset({
-        id: buildAssetId(customModelName, "mdl"),
-        label: customModelName.trim(),
-        url,
-      });
+      const savedModel = await createModeloAsset(modelFile, customModelName.trim());
 
-      setModelURL(savedModel.src || url);
+      setModelURL(savedModel.src);
       onUploadComplete?.(savedModel, "model");
 
       setModelFile(null);
       setCustomModelName("");
       if (modelInputRef.current) modelInputRef.current.value = "";
     } catch (uploadError) {
-      const message = uploadError?.message || "No se pudo subir el modelo .glb";
-      setError(handleUploadError(message));
+      setError(uploadError?.message || "No se pudo subir el modelo .glb");
     } finally {
       setModelUploading(false);
     }
   };
 
-  // NOTA: todos los estilos estan inline. Fue una decision deliberada porque
-  // este componente es bastante auto-contenido y no compartia estilos con
-  // nada mas. Si crece mas vale la pena moverlo a un CSS module.
   return (
     <div style={{ display: "grid", gap: "1rem", maxWidth: 720, width: "100%" }}>
-      <h2 style={{ margin: 0, color: "#d4aa63" }}>Subir Archivos a Cloudinary</h2>
+      <h2 style={{ margin: 0, color: "#d4aa63" }}>Subir Archivos</h2>
 
       {/* ==================== Bloque de IMAGEN ==================== */}
       <div style={{ display: "grid", gap: "0.75rem" }}>
         <h3 style={{ margin: 0, color: "#f7f1e8", fontSize: "1rem" }}>Imagen del menú</h3>
 
-        {/* Input file oculto, se activa via el boton de abajo */}
         <input
           ref={imageInputRef}
           type="file"
@@ -295,7 +169,6 @@ export default function AdminUploader({ onUploadComplete }) {
               padding: "1rem",
             }}
           >
-            {/* Preview de la imagen con boton X para descartarla */}
             <div style={{ position: "relative", display: "inline-block", alignSelf: "center" }}>
               <img
                 src={imagePreview}
@@ -409,7 +282,6 @@ export default function AdminUploader({ onUploadComplete }) {
         )}
       </div>
 
-      {/* Separador visual entre los dos bloques */}
       <div style={{ height: 1, background: "rgba(255,255,255,0.15)" }} />
 
       {/* ==================== Bloque de MODELO 3D ==================== */}
@@ -454,8 +326,6 @@ export default function AdminUploader({ onUploadComplete }) {
             }}
           >
             <div style={{ position: "relative", display: "inline-block", alignSelf: "center" }}>
-              {/* No hay preview visual del .glb porque seria demasiado caro
-                  renderizarlo aca. Mostramos un placeholder con icono. */}
               <div
                 style={{
                   width: 320,

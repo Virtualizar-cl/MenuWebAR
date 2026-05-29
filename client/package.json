@@ -10,8 +10,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@cloudinary/react": "^1.14.4",
-    "@cloudinary/url-gen": "^1.22.0",
     "@google/model-viewer": "4.2.0",
     "chart.js": "^4.5.1",
     "qrcode.react": "^4.2.0",
