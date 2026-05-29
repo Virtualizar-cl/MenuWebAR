@@ -31,7 +31,7 @@ export function useActivityLogs() {
         setLoading(false);
       }
     },
-    [filters.action, filters.entityType],
+    [filters],
   );
 
   const clearLogs = useCallback(async () => {

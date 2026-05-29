@@ -33,7 +33,7 @@ export default function StatsPanel() {
   useEffect(() => {
     loadStats(days);
     loadAnalytics();
-  }, [days]);
+  }, [days, loadAnalytics, loadStats]);
 
   if (statsLoading || analyticsLoading) return <LoadingState message="Cargando estadísticas..." />;
   if (statsError || analyticsError) return <ErrorState message={statsError || analyticsError} />;
