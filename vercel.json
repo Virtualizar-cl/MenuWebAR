@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm install --prefix client && npm run build:client",
+  "buildCommand": "npm install --prefix client --include=dev && npm run build:client",
   "outputDirectory": "client/dist",
   "functions": {
     "api/index.js": {
