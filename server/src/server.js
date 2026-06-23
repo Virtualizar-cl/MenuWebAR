@@ -44,6 +44,7 @@ const loggingMiddleware = require("./middlewares/loggingMiddleware");
 const activityLogsRouter = require("./routes/activityLogs");
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET;
 // Super admin desde env vars (Vercel filesystem es read-only, no admin.json).
