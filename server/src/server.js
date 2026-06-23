@@ -4,8 +4,6 @@ require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") }
 
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs");
-const path = require("path");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
@@ -48,7 +46,9 @@ const activityLogsRouter = require("./routes/activityLogs");
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET;
-const ADMIN_FILE = path.join(__dirname, "data", "admin.json");
+// Super admin desde env vars (Vercel filesystem es read-only, no admin.json).
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 
 // En produccion no dejamos arrancar sin JWT_SECRET. En dev tiramos un warning
 // y usamos un valor por defecto para que el equipo pueda trabajar sin trabas.
@@ -148,43 +148,18 @@ function resolveMenuItems(items, modelos) {
   }));
 }
 
-// Crea el usuario admin la primera vez que corre el servidor. Si ya existe,
-// no hace nada. La pass por defecto viene del .env y se hashea con bcrypt.
-function initAdmin() {
-  let needsInit = false;
-
-  if (!fs.existsSync(ADMIN_FILE)) {
-    needsInit = true;
-  } else {
-    try {
-      const existing = JSON.parse(fs.readFileSync(ADMIN_FILE, "utf-8"));
-      if (!existing.username || !existing.password) {
-        needsInit = true;
-      }
-    } catch {
-      // Si el JSON esta corrupto, lo regeneramos
-      needsInit = true;
+// Valida que el super admin este configurado por env vars. Sin esto no hay
+// forma de loguearse como super_admin.
+function checkAdminEnv() {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD_HASH) {
+    const msg =
+      "ADMIN_EMAIL y ADMIN_PASSWORD_HASH son requeridos. " +
+      "Genera el hash con: node -e \"console.log(require('bcryptjs').hashSync('TU_PASS',10))\"";
+    if (process.env.NODE_ENV === "production") {
+      console.error("FATAL: " + msg);
+    } else {
+      console.warn("WARNING: " + msg);
     }
-  }
-
-  if (needsInit) {
-    const defaultEmail = process.env.ADMIN_DEFAULT_EMAIL || "admin@hublab.com";
-    const defaultPassword = process.env.ADMIN_DEFAULT_PASSWORD;
-
-    if (!defaultPassword) {
-      console.error(
-        "ADMIN_DEFAULT_PASSWORD env var is required to create the initial admin account.",
-      );
-      console.error("Set it in your .env file. See .env.example for reference.");
-      process.exit(1);
-    }
-
-    const hash = bcrypt.hashSync(defaultPassword, 10);
-    fs.writeFileSync(
-      ADMIN_FILE,
-      JSON.stringify({ username: defaultEmail, password: hash }, null, 2),
-    );
-    console.log(`Admin created: ${defaultEmail} (change password after first login)`);
   }
 }
 
@@ -387,10 +362,9 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     return res.status(400).json({ error: "Usuario y contraseña requeridos" });
   }
 
-  // Primera puerta: super_admin desde admin.json
-  const admin = JSON.parse(fs.readFileSync(ADMIN_FILE, "utf-8"));
-  if (username === admin.username) {
-    if (!bcrypt.compareSync(password, admin.password)) {
+  // Primera puerta: super_admin desde env vars
+  if (ADMIN_EMAIL && username === ADMIN_EMAIL) {
+    if (!ADMIN_PASSWORD_HASH || !bcrypt.compareSync(password, ADMIN_PASSWORD_HASH)) {
       return res.status(401).json({ error: "Credenciales incorrectas" });
     }
     const token = jwt.sign(
@@ -918,14 +892,19 @@ app.put("/api/admin/password", authMiddleware, loginLimiter, (req, res) => {
       .json({ error: "Solo el super admin puede cambiar su pass por este endpoint" });
   }
 
-  const admin = JSON.parse(fs.readFileSync(ADMIN_FILE, "utf-8"));
-  if (!bcrypt.compareSync(currentPassword, admin.password)) {
+  if (!ADMIN_PASSWORD_HASH || !bcrypt.compareSync(currentPassword, ADMIN_PASSWORD_HASH)) {
     return res.status(401).json({ error: "Contraseña actual incorrecta" });
   }
 
-  admin.password = bcrypt.hashSync(newPassword, 10);
-  fs.writeFileSync(ADMIN_FILE, JSON.stringify(admin, null, 2));
-  res.json({ message: "Contraseña actualizada" });
+  // El filesystem es read-only en Vercel, no se puede persistir. Devolvemos el
+  // hash nuevo para que el operador lo guarde como ADMIN_PASSWORD_HASH y
+  // redeploy. La pass del super_admin se rota cambiando esa env var.
+  const newHash = bcrypt.hashSync(newPassword, 10);
+  res.status(501).json({
+    error:
+      "Cambio de pass del super admin se hace por env var. Actualiza ADMIN_PASSWORD_HASH en Vercel con el hash de abajo y redeploy.",
+    newHash,
+  });
 });
 
 // Rutas de logs y estadísticas
@@ -933,7 +912,7 @@ app.use("/api/admin/logs", authMiddleware, activityLogsRouter);
 
 app.use(errorHandler);
 
-initAdmin();
+checkAdminEnv();
 
 module.exports = app;
 
