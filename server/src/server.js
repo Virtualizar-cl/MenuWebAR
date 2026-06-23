@@ -1,6 +1,6 @@
 // Carga las variables de entorno desde .env que esta en la raiz del proyecto,
 // no en la carpeta /server. Por eso el path con "..".
-require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
+try { require("dotenv").config(); } catch {}
 
 const express = require("express");
 const cors = require("cors");
