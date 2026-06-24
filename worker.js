@@ -30,6 +30,7 @@ const {
   isSupabaseStorageUrl,
 } = store;
 
+const JWT_ALG = "HS256";
 const SAFE_PATH_RE = /^\/assets\/(modelosAR|IMG)\//;
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 const CARD_MESSAGE_MAX = 40;
@@ -115,7 +116,7 @@ async function auth(c, next) {
   if (!header || !header.startsWith("Bearer ")) return c.json({ error: "Token requerido" }, 401);
   const { JWT_SECRET } = getEnv(c);
   try {
-    const decoded = await verify(header.split(" ")[1], JWT_SECRET);
+    const decoded = await verify(header.split(" ")[1], JWT_SECRET, JWT_ALG);
     c.set("user", {
       ...decoded,
       permissions: decoded.isSuperAdmin ? allPermissionsTrue() : decoded.permissions || {},
@@ -278,6 +279,7 @@ app.post("/api/auth/login", loginLimiter, async (c) => {
     const token = await sign(
       { username, isSuperAdmin: true, permissions: perms, exp: Math.floor(Date.now() / 1000) + 28800 },
       JWT_SECRET,
+      JWT_ALG,
     );
     return c.json({ token, username, isSuperAdmin: true, permissions: perms });
   }
@@ -295,6 +297,7 @@ app.post("/api/auth/login", loginLimiter, async (c) => {
         exp: Math.floor(Date.now() / 1000) + 28800,
       },
       JWT_SECRET,
+      JWT_ALG,
     );
     return c.json({ token, username: user.email, isSuperAdmin: false, permissions: user.permissions });
   } catch (e) {
