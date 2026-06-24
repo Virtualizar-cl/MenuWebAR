@@ -12,27 +12,36 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const path = require("path");
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const isSupabaseEnabled = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
-
-const supabase = isSupabaseEnabled
-  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-  : null;
-
-if (!isSupabaseEnabled) {
-  console.warn(
-    "WARNING: Supabase no configurado (falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY).",
-  );
+// Cliente lazy: en Cloudflare Workers process.env se puebla en runtime, no en
+// import time. Por eso no evaluamos las credenciales al cargar el modulo sino
+// la primera vez que se necesita el cliente. En Vercel/Node funciona igual.
+let _supabase = null;
+function getSupabase() {
+  if (_supabase) return _supabase;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  _supabase = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return _supabase;
 }
+
+// isSupabaseEnabled como getter: se reevalua cada acceso para reflejar el
+// estado real de process.env en runtime.
+Object.defineProperty(module.exports, "isSupabaseEnabled", {
+  enumerable: true,
+  get() {
+    return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  },
+});
 
 const HISTORIAL_COLORES_MAX = 8;
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 
-const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "menu-assets";
+function getStorageBucket() {
+  return process.env.SUPABASE_STORAGE_BUCKET || "menu-assets";
+}
 
 const PERMISSION_KEYS = [
   "puede_crear_platos",
@@ -55,9 +64,11 @@ function httpError(status, message) {
 }
 
 function requireClient() {
-  if (!supabase) {
+  const c = getSupabase();
+  if (!c) {
     throw httpError(503, "Supabase no esta configurado");
   }
+  return c;
 }
 
 // =====================================================
@@ -65,25 +76,27 @@ function requireClient() {
 // =====================================================
 
 async function uploadFileToStorage(file, folder) {
-  requireClient();
+  const supabase = requireClient();
   const fileExt = path.extname(file.originalname).toLowerCase();
   const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${fileExt}`;
   const filePath = `${folder}/${fileName}`;
 
-  const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(filePath, file.buffer, {
-    contentType: file.mimetype,
-    upsert: false,
-  });
+  const { error } = await supabase.storage
+    .from(getStorageBucket())
+    .upload(filePath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false,
+    });
 
   if (error) throw httpError(500, `Error al subir archivo: ${error.message}`);
 
-  const { data: publicUrl } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+  const { data: publicUrl } = supabase.storage.from(getStorageBucket()).getPublicUrl(filePath);
   return publicUrl.publicUrl;
 }
 
 async function deleteStorageFile(url) {
   if (!url || typeof url !== "string") return null;
-  requireClient();
+  const supabase = requireClient();
 
   try {
     const parsed = new URL(url);
@@ -98,7 +111,7 @@ async function deleteStorageFile(url) {
     const filePath = match[1];
     if (!filePath) return null;
 
-    const { error } = await supabase.storage.from(STORAGE_BUCKET).remove([filePath]);
+    const { error } = await supabase.storage.from(getStorageBucket()).remove([filePath]);
     if (error) {
       console.warn("Error deleting from Storage:", error.message);
       return { error: error.message };
@@ -225,7 +238,7 @@ function mapUsuarioRow(row) {
 // =====================================================
 
 async function loadSupabaseData() {
-  requireClient();
+  const supabase = requireClient();
 
   const [catsRes, imgsRes, modsRes, itemsRes] = await Promise.all([
     supabase.from("categorias").select("*").order("id_categ"),
@@ -254,9 +267,6 @@ async function loadSupabaseData() {
   return { categories, imagenes, modelos, menuItems };
 }
 
-// Helper privado: recarga toda la data y devuelve el plato con id especifico
-// con relaciones resueltas. Si no esta en la lista (raro), cae a un mapItemRow
-// con maps vacios. Centraliza el patron usado por createItem/updateItem.
 async function reloadAndFindItem(rawRow) {
   const all = await loadSupabaseData();
   const found = all.menuItems.find((i) => i.id === formatItemId(rawRow.id));
@@ -270,8 +280,6 @@ async function reloadAndFindItem(rawRow) {
   );
 }
 
-// Helper privado: si el cardColor del payload es valido, lo empuja al historial
-// en background con errores silenciados. Usado por create/update.
 function pushColorBackground(cardColor) {
   if (cardColor && HEX_COLOR_RE.test(cardColor)) {
     pushColorToHistorial(cardColor).catch((e) =>
@@ -285,7 +293,7 @@ function pushColorBackground(cardColor) {
 // =====================================================
 
 async function createCategory({ label }) {
-  requireClient();
+  const supabase = requireClient();
 
   const { data, error } = await supabase
     .from("categorias")
@@ -298,7 +306,7 @@ async function createCategory({ label }) {
 }
 
 async function updateCategory(stringId, { label }) {
-  requireClient();
+  const supabase = requireClient();
   const intId = parseIntId(stringId);
   if (intId == null) throw httpError(400, "id de categoria invalido");
 
@@ -318,7 +326,7 @@ async function updateCategory(stringId, { label }) {
 }
 
 async function deleteCategory(stringId) {
-  requireClient();
+  const supabase = requireClient();
   const intId = parseIntId(stringId);
   if (intId == null) throw httpError(400, "id de categoria invalido");
 
@@ -336,7 +344,7 @@ async function deleteCategory(stringId) {
 // =====================================================
 
 async function createImagenAsset({ label, url }) {
-  requireClient();
+  const supabase = requireClient();
 
   const { data, error } = await supabase
     .from("imagenes")
@@ -349,7 +357,7 @@ async function createImagenAsset({ label, url }) {
 }
 
 async function deleteImagenAsset(stringId) {
-  requireClient();
+  const supabase = requireClient();
   const intId = parseIntId(stringId);
   if (intId == null) throw httpError(400, "id de imagen invalido");
 
@@ -378,7 +386,7 @@ async function deleteImagenAsset(stringId) {
 // =====================================================
 
 async function createModeloAsset({ label, url }) {
-  requireClient();
+  const supabase = requireClient();
 
   const { data, error } = await supabase
     .from("modelos")
@@ -391,7 +399,7 @@ async function createModeloAsset({ label, url }) {
 }
 
 async function deleteModeloAsset(stringId) {
-  requireClient();
+  const supabase = requireClient();
   const intId = parseIntId(stringId);
   if (intId == null) throw httpError(400, "id de modelo invalido");
 
@@ -420,6 +428,7 @@ async function deleteModeloAsset(stringId) {
 // =====================================================
 
 async function resolveItemFks({ category, image, modelAR }) {
+  const supabase = requireClient();
   const result = {};
 
   if (category !== undefined) {
@@ -497,7 +506,7 @@ function buildDescuentoPayload({ descuento, descuentoInicio, descuentoFin }) {
 }
 
 async function createItem(payload) {
-  requireClient();
+  const supabase = requireClient();
 
   const {
     category,
@@ -546,7 +555,7 @@ async function createItem(payload) {
 }
 
 async function updateItem(stringId, payload) {
-  requireClient();
+  const supabase = requireClient();
   const intId = parseIntId(stringId);
   if (intId == null) throw httpError(400, "id de plato invalido");
 
@@ -605,7 +614,7 @@ async function updateItem(stringId, payload) {
 }
 
 async function deleteItem(stringId) {
-  requireClient();
+  const supabase = requireClient();
   const intId = parseIntId(stringId);
   if (intId == null) throw httpError(400, "id de plato invalido");
 
@@ -620,7 +629,7 @@ async function deleteItem(stringId) {
 // =====================================================
 
 async function listColorHistorial() {
-  requireClient();
+  const supabase = requireClient();
 
   const { data, error } = await supabase
     .from("historial_colores")
@@ -633,7 +642,7 @@ async function listColorHistorial() {
 }
 
 async function pushColorToHistorial(color) {
-  requireClient();
+  const supabase = requireClient();
 
   if (typeof color !== "string" || !HEX_COLOR_RE.test(color)) {
     throw httpError(400, "color invalido (formato esperado #RRGGBB)");
@@ -683,7 +692,7 @@ function sanitizePermissions(permissions) {
 }
 
 async function listUsuarios() {
-  requireClient();
+  const supabase = requireClient();
 
   const { data, error } = await supabase
     .from("usuarios")
@@ -695,7 +704,7 @@ async function listUsuarios() {
 }
 
 async function findUsuarioByEmail(email) {
-  requireClient();
+  const supabase = requireClient();
   if (typeof email !== "string" || !email.trim()) return null;
 
   const { data, error } = await supabase
@@ -709,7 +718,7 @@ async function findUsuarioByEmail(email) {
 }
 
 async function createUsuario({ email, password, permissions }) {
-  requireClient();
+  const supabase = requireClient();
 
   if (typeof email !== "string" || !email.trim()) {
     throw httpError(400, "email es requerido");
@@ -739,7 +748,7 @@ async function createUsuario({ email, password, permissions }) {
 }
 
 async function updateUsuario(id, { email, password, permissions }) {
-  requireClient();
+  const supabase = requireClient();
 
   const intId = typeof id === "string" ? parseInt(id, 10) : id;
   if (!Number.isInteger(intId)) throw httpError(400, "id de usuario invalido");
@@ -786,7 +795,7 @@ async function updateUsuario(id, { email, password, permissions }) {
 }
 
 async function deleteUsuario(id) {
-  requireClient();
+  const supabase = requireClient();
 
   const intId = typeof id === "string" ? parseInt(id, 10) : id;
   if (!Number.isInteger(intId)) throw httpError(400, "id de usuario invalido");
@@ -811,8 +820,7 @@ async function verifyUsuarioPassword(email, password) {
 // EXPORTS
 // =====================================================
 
-module.exports = {
-  isSupabaseEnabled,
+Object.assign(module.exports, {
   loadSupabaseData,
   createCategory,
   updateCategory,
@@ -832,9 +840,10 @@ module.exports = {
   updateUsuario,
   deleteUsuario,
   verifyUsuarioPassword,
-  // Storage
   uploadFileToStorage,
   deleteStorageFile,
   isSupabaseStorageUrl,
-  STORAGE_BUCKET,
-};
+  get STORAGE_BUCKET() {
+    return getStorageBucket();
+  },
+});

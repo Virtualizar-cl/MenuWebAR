@@ -1,12 +1,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { jwt as jwtMiddleware, sign } from "hono/jwt";
+import { sign, verify } from "hono/jwt";
 import bcrypt from "bcryptjs";
 import * as store from "./server/src/supabaseStore.js";
 import * as logsStore from "./server/src/services/logsStore.js";
 
 const {
-  isSupabaseEnabled,
   loadSupabaseData,
   createModeloAsset,
   createImagenAsset,
@@ -92,7 +91,7 @@ function getEnv(c) {
 }
 
 function dataSource(c) {
-  if (isSupabaseEnabled) return null;
+  if (store.isSupabaseEnabled) return null;
   return c.json(
     {
       error:
@@ -116,7 +115,6 @@ async function auth(c, next) {
   if (!header || !header.startsWith("Bearer ")) return c.json({ error: "Token requerido" }, 401);
   const { JWT_SECRET } = getEnv(c);
   try {
-    const { verify } = await import("hono/jwt");
     const decoded = await verify(header.split(" ")[1], JWT_SECRET);
     c.set("user", {
       ...decoded,
@@ -284,7 +282,7 @@ app.post("/api/auth/login", loginLimiter, async (c) => {
     return c.json({ token, username, isSuperAdmin: true, permissions: perms });
   }
 
-  if (!isSupabaseEnabled) return c.json({ error: "Credenciales incorrectas" }, 401);
+  if (!store.isSupabaseEnabled) return c.json({ error: "Credenciales incorrectas" }, 401);
   try {
     const user = await verifyUsuarioPassword(username, password);
     if (!user) return c.json({ error: "Credenciales incorrectas" }, 401);

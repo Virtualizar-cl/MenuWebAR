@@ -1,21 +1,23 @@
 const { createClient } = require("@supabase/supabase-js");
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
 const LOGS_TABLE = "activity_logs";
 
-const supabase =
-  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : null;
-
-const isEnabled = Boolean(supabase);
+// Cliente lazy: process.env se puebla en runtime en Cloudflare Workers.
+let _supabase = null;
+function getSupabase() {
+  if (_supabase) return _supabase;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  _supabase = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return _supabase;
+}
 
 async function addLog(entry) {
-  if (!isEnabled) {
+  const supabase = getSupabase();
+  if (!supabase) {
     console.log("[LOG] Supabase not configured, skipping");
     return null;
   }
@@ -46,7 +48,8 @@ async function addLog(entry) {
 }
 
 async function getStats({ days = 7, username } = {}) {
-  if (!isEnabled) return null;
+  const supabase = getSupabase();
+  if (!supabase) return null;
 
   const now = new Date();
   const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -138,7 +141,8 @@ async function getStats({ days = 7, username } = {}) {
 }
 
 async function getLogs({ limit = 50, offset = 0, action, entityType, username } = {}) {
-  if (!isEnabled) return [];
+  const supabase = getSupabase();
+  if (!supabase) return [];
 
   let query = supabase
     .from(LOGS_TABLE)
@@ -167,12 +171,12 @@ async function getLogs({ limit = 50, offset = 0, action, entityType, username } 
 }
 
 async function clearLogs() {
-  if (!isEnabled) {
+  const supabase = getSupabase();
+  if (!supabase) {
     console.log("[LOG] Supabase not configured");
     return;
   }
 
-  // Eliminar todos los registros
   const { error } = await supabase.from(LOGS_TABLE).delete().neq("id", 0).select("id");
 
   if (error) {
