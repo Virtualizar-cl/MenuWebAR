@@ -9,8 +9,10 @@ const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
 const multer = require("multer");
 
-// Toda la capa de datos vive en supabaseStore. Este archivo solo se encarga
-// de exponer los endpoints HTTP y validar lo que entra
+// Toda la capa de datos vive en dataStore (orquestador con adaptadores).
+// Este archivo solo se encarga de exponer los endpoints HTTP y validar lo que
+// entra. dataStore expone los mismos nombres que el viejo supabaseStore, asi
+// que el resto del archivo no cambia.
 const {
   isSupabaseEnabled,
   loadSupabaseData,
@@ -38,7 +40,7 @@ const {
   uploadFileToStorage,
   deleteStorageFile,
   isSupabaseStorageUrl,
-} = require("./supabaseStore");
+} = require("./dataStore");
 
 const loggingMiddleware = require("./middlewares/loggingMiddleware");
 const activityLogsRouter = require("./routes/activityLogs");
@@ -298,8 +300,6 @@ app.get("/api/menu", async (_req, res) => {
     const data = await loadSupabaseData();
     return res.json({
       ...data,
-      // Los platos guardan el id del modelo, pero el frontend necesita la URL
-      // final para cargar el .glb. Resolvemos aca.
       menuItems: resolveMenuItems(data.menuItems, data.modelos),
     });
   } catch (error) {
@@ -363,7 +363,7 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     return res.status(400).json({ error: "Usuario y contraseña requeridos" });
   }
 
-  // Primera puerta: super_admin desde env vars
+// Primera puerta: super_admin desde env vars
   if (ADMIN_EMAIL && username === ADMIN_EMAIL) {
     if (!ADMIN_PASSWORD_HASH || !bcrypt.compareSync(password, ADMIN_PASSWORD_HASH)) {
       return res.status(401).json({ error: "Credenciales incorrectas" });
