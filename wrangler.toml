@@ -2,3 +2,28 @@ name = "menuwebar-api"
 main = "worker.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
+
+# --- Base de datos D1 (SQLite) ---
+# El binding se llama DB; el worker lo lee como env.DB.
+[[d1_databases]]
+binding = "DB"
+database_name = "menuwebar-db"
+database_id = "7bba2827-726f-4017-8425-53168a1bc082"
+
+# --- Almacenamiento R2 ---
+# El binding se llama ASSETS; el worker lo lee como env.ASSETS.
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "menuwebar-assets"
+
+# --- Variables NO secretas ---
+# R2_PUBLIC_URL: dominio publico del bucket (r2.dev o dominio propio), sin barra
+# final. Reemplazar por la URL real que muestre el dashboard de R2 al habilitar
+# el acceso publico del bucket menuwebar-assets.
+[vars]
+R2_PUBLIC_URL = "https://pub-097c9300a58a429ca8f4079ef9c52c7e.r2.dev"
+
+# --- Secretos (NO van aca; se cargan con: wrangler secret put NOMBRE) ---
+#   JWT_SECRET           -> mismo valor que en Vercel para tokens compatibles
+#   ADMIN_EMAIL          -> email del super admin
+#   ADMIN_PASSWORD_HASH  -> hash bcrypt de la pass del super admin

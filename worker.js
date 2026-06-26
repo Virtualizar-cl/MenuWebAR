@@ -2,11 +2,11 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { sign, verify } from "hono/jwt";
 import bcrypt from "bcryptjs";
-import * as store from "./server/src/supabaseStore.js";
-import * as logsStore from "./server/src/services/logsStore.js";
+import adapter, { PERMISSION_KEYS } from "./server/src/db/d1Adapter.js";
+import * as storage from "./server/src/storage/r2Storage.js";
 
 const {
-  loadSupabaseData,
+  loadData,
   createModeloAsset,
   createImagenAsset,
   deleteImagenAsset,
@@ -19,16 +19,14 @@ const {
   deleteItem,
   listColorHistorial,
   pushColorToHistorial,
-  PERMISSION_KEYS,
   listUsuarios,
   createUsuario,
   updateUsuario,
   deleteUsuario,
   verifyUsuarioPassword,
-  uploadFileToStorage,
-  deleteStorageFile,
-  isSupabaseStorageUrl,
-} = store;
+} = adapter;
+
+const { uploadFileToStorage, deleteStorageFile, isManagedStorageUrl } = storage;
 
 const JWT_ALG = "HS256";
 const SAFE_PATH_RE = /^\/assets\/(modelosAR|IMG)\//;
@@ -43,7 +41,7 @@ function isSafePath(p) {
   return SAFE_PATH_RE.test(p);
 }
 function isSafeImageRef(value) {
-  return isSafePath(value) || isSupabaseStorageUrl(value);
+  return isSafePath(value) || isManagedStorageUrl(value);
 }
 function isNonEmptyString(val) {
   return typeof val === "string" && val.trim().length > 0;
@@ -91,20 +89,18 @@ function getEnv(c) {
   };
 }
 
+// La BD esta disponible si hay binding D1. Devuelve 503 si falta.
 function dataSource(c) {
-  if (store.isSupabaseEnabled) return null;
+  if (c.env.DB) return null;
   return c.json(
-    {
-      error:
-        "Supabase no esta configurado. Define SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY para usar la API de datos.",
-    },
+    { error: "D1 no esta configurado. Asocia el binding DB en wrangler.toml." },
     503,
   );
 }
 function routeError(c, error) {
   const statusCode = Number.isInteger(error?.status) ? error.status : 500;
-  if (statusCode >= 500) console.error("Supabase route error:", error?.message || error);
-  return c.json({ error: error?.message || "Error de datos en Supabase" }, statusCode);
+  if (statusCode >= 500) console.error("D1 route error:", error?.message || error);
+  return c.json({ error: error?.message || "Error de datos" }, statusCode);
 }
 
 const app = new Hono();
@@ -155,60 +151,6 @@ function rateLimit(max, windowMs) {
   };
 }
 
-// --- Logging (post-respuesta, best-effort) ---
-function getEntityType(path) {
-  if (path.includes("/logs") || path.includes("/auth/") || path.includes("/health") || path.includes("/menu"))
-    return null;
-  if (path.includes("/admin/items")) return "item";
-  if (path.includes("/admin/categories")) return "category";
-  if (path.includes("/admin/imagenes") || path.includes("/upload-image")) return "image";
-  if (path.includes("/admin/modelos")) return "modelo";
-  if (path.includes("/admin/password")) return "password";
-  return null;
-}
-function getAction(method) {
-  return { POST: "CREATE", PUT: "UPDATE", DELETE: "DELETE" }[method] || "UNKNOWN";
-}
-function extractEntityId(path) {
-  const m = path.match(/\/(items|categories|imagenes|modelos)\/([^/]+)/);
-  return m ? m[2] : null;
-}
-app.use("/api/*", async (c, next) => {
-  const start = Date.now();
-  await next();
-  const method = c.req.method;
-  const user = c.get("user");
-  if (!user || !["POST", "PUT", "DELETE"].includes(method)) return;
-  if (c.res.status < 200 || c.res.status >= 400) return;
-  const entityType = getEntityType(c.req.path);
-  if (!entityType) return;
-  let body = null;
-  try {
-    body = await c.res.clone().json();
-  } catch {}
-  let entityId = extractEntityId(c.req.path);
-  let entityLabel = null;
-  if (body && typeof body === "object") {
-    entityLabel = body.label || body.name || body.title || null;
-    if (!entityId && body.id) entityId = body.id;
-  }
-  logsStore
-    .addLog({
-      username: user.username,
-      action: getAction(method),
-      entityType,
-      entityId: entityId || null,
-      entityLabel,
-      details: { statusCode: c.res.status, response: body },
-      method,
-      path: c.req.path,
-      ip: c.req.header("cf-connecting-ip") || "unknown",
-      userAgent: c.req.header("user-agent") || "unknown",
-      duration: Date.now() - start,
-    })
-    .catch((err) => console.error("Error saving log:", err.message));
-});
-
 const apiLimiter = rateLimit(200, 15 * 60 * 1000);
 const loginLimiter = rateLimit(15, 15 * 60 * 1000);
 app.use("/api/*", apiLimiter);
@@ -221,7 +163,7 @@ app.get("/api/menu", async (c) => {
   const ds = dataSource(c);
   if (ds) return ds;
   try {
-    const data = await loadSupabaseData();
+    const data = await loadData();
     return c.json({ ...data, menuItems: resolveMenuItems(data.menuItems, data.modelos) });
   } catch (e) {
     return routeError(c, e);
@@ -231,7 +173,7 @@ app.get("/api/categories", async (c) => {
   const ds = dataSource(c);
   if (ds) return ds;
   try {
-    return c.json((await loadSupabaseData()).categories);
+    return c.json((await loadData()).categories);
   } catch (e) {
     return routeError(c, e);
   }
@@ -240,7 +182,7 @@ app.get("/api/modelos", async (c) => {
   const ds = dataSource(c);
   if (ds) return ds;
   try {
-    return c.json((await loadSupabaseData()).modelos || []);
+    return c.json((await loadData()).modelos || []);
   } catch (e) {
     return routeError(c, e);
   }
@@ -249,7 +191,7 @@ app.get("/api/imagenes", async (c) => {
   const ds = dataSource(c);
   if (ds) return ds;
   try {
-    return c.json((await loadSupabaseData()).imagenes || []);
+    return c.json((await loadData()).imagenes || []);
   } catch (e) {
     return routeError(c, e);
   }
@@ -258,7 +200,7 @@ app.get("/api/menu-items", async (c) => {
   const ds = dataSource(c);
   if (ds) return ds;
   try {
-    const data = await loadSupabaseData();
+    const data = await loadData();
     return c.json(resolveMenuItems(data.menuItems, data.modelos));
   } catch (e) {
     return routeError(c, e);
@@ -284,7 +226,7 @@ app.post("/api/auth/login", loginLimiter, async (c) => {
     return c.json({ token, username, isSuperAdmin: true, permissions: perms });
   }
 
-  if (!store.isSupabaseEnabled) return c.json({ error: "Credenciales incorrectas" }, 401);
+  if (!c.env.DB) return c.json({ error: "Credenciales incorrectas" }, 401);
   try {
     const user = await verifyUsuarioPassword(username, password);
     if (!user) return c.json({ error: "Credenciales incorrectas" }, 401);
@@ -396,8 +338,8 @@ app.delete(
     if (ds) return ds;
     try {
       const { url } = await deleteImagenAsset(c.req.param("id"));
-      const storage = url ? await deleteStorageFile(url) : null;
-      return c.json({ message: "Imagen eliminada", storage });
+      const storageResult = url ? await deleteStorageFile(url) : null;
+      return c.json({ message: "Imagen eliminada", storage: storageResult });
     } catch (e) {
       return routeError(c, e);
     }
@@ -413,8 +355,8 @@ app.delete(
     if (ds) return ds;
     try {
       const { url } = await deleteModeloAsset(c.req.param("id"));
-      const storage = url ? await deleteStorageFile(url) : null;
-      return c.json({ message: "Modelo eliminado", storage });
+      const storageResult = url ? await deleteStorageFile(url) : null;
+      return c.json({ message: "Modelo eliminado", storage: storageResult });
     } catch (e) {
       return routeError(c, e);
     }
@@ -426,7 +368,7 @@ app.get("/api/admin/categories", auth, async (c) => {
   const ds = dataSource(c);
   if (ds) return ds;
   try {
-    return c.json((await loadSupabaseData()).categories);
+    return c.json((await loadData()).categories);
   } catch (e) {
     return routeError(c, e);
   }
@@ -487,7 +429,7 @@ app.get("/api/admin/items", auth, async (c) => {
   const ds = dataSource(c);
   if (ds) return ds;
   try {
-    return c.json((await loadSupabaseData()).menuItems);
+    return c.json((await loadData()).menuItems);
   } catch (e) {
     return routeError(c, e);
   }
@@ -668,43 +610,6 @@ app.put("/api/admin/password", auth, loginLimiter, async (c) => {
   );
 });
 
-// ========== ADMIN: logs ==========
-app.get("/api/admin/logs/stats", auth, async (c) => {
-  try {
-    const days = parseInt(c.req.query("days") || "7", 10);
-    const username = c.req.query("username");
-    return c.json(await logsStore.getStats({ days, username }));
-  } catch (e) {
-    console.error("Error getting stats:", e.message);
-    return c.json({ error: "Error getting stats" }, 500);
-  }
-});
-app.get("/api/admin/logs", auth, async (c) => {
-  try {
-    return c.json(
-      await logsStore.getLogs({
-        limit: parseInt(c.req.query("limit") || "50", 10),
-        offset: parseInt(c.req.query("offset") || "0", 10),
-        action: c.req.query("action"),
-        entityType: c.req.query("entityType"),
-        username: c.req.query("username"),
-      }),
-    );
-  } catch (e) {
-    console.error("Error getting logs:", e.message);
-    return c.json({ error: "Error getting logs" }, 500);
-  }
-});
-app.delete("/api/admin/logs/clear", auth, async (c) => {
-  try {
-    await logsStore.clearLogs();
-    return c.json({ message: "Logs cleared" });
-  } catch (e) {
-    console.error("Error clearing logs:", e.message);
-    return c.json({ error: "Error clearing logs" }, 500);
-  }
-});
-
 app.onError((err, c) => {
   console.error("Unhandled error:", err.message);
   return c.json({ error: "Error interno del servidor", code: "INTERNAL_ERROR" }, 500);
@@ -712,8 +617,13 @@ app.onError((err, c) => {
 
 export default {
   fetch(request, env, ctx) {
+    // process.env para libs que lo leen (JWT_SECRET, ADMIN_*).
     globalThis.process ??= {};
     globalThis.process.env = { ...globalThis.process.env, ...env };
+    // Bindings D1 / R2 para los adaptadores (lazy, por request).
+    globalThis.__D1 = env.DB || null;
+    globalThis.__R2 = env.ASSETS || null;
+    globalThis.__R2_BASE = env.R2_PUBLIC_URL || "";
     return app.fetch(request, env, ctx);
   },
 };
