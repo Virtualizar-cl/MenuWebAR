@@ -168,8 +168,7 @@ function isManagedStorageUrl(value) {
       const parsed = new URL(value);
       const supabaseHost = new URL(process.env.SUPABASE_URL).hostname;
       return (
-        parsed.hostname === supabaseHost &&
-        parsed.pathname.includes("/storage/v1/object/public/")
+        parsed.hostname === supabaseHost && parsed.pathname.includes("/storage/v1/object/public/")
       );
     } catch {
       return false;

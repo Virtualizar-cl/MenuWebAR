@@ -30,12 +30,7 @@
 const bcrypt = require("bcryptjs");
 const postgres = require("postgres");
 
-const {
-  PERMISSION_KEYS,
-  HISTORIAL_COLORES_MAX,
-  HEX_COLOR_RE,
-  httpError,
-} = require("./adapter");
+const { PERMISSION_KEYS, HISTORIAL_COLORES_MAX, HEX_COLOR_RE, httpError } = require("./adapter");
 
 // -----------------------------------------------------------------------------
 // CONEXION (lazy singleton)

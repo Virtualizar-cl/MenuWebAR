@@ -549,9 +549,7 @@ async function pushColorToHistorial(color) {
     .bind(normalized, nowIso)
     .run();
 
-  const all = await db
-    .prepare("SELECT color FROM historial_colores ORDER BY used_at DESC")
-    .all();
+  const all = await db.prepare("SELECT color FROM historial_colores ORDER BY used_at DESC").all();
   const rows = all.results || [];
   if (rows.length > HISTORIAL_COLORES_MAX) {
     const toDelete = rows.slice(HISTORIAL_COLORES_MAX).map((r) => r.color);

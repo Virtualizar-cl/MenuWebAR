@@ -92,10 +92,7 @@ function getEnv(c) {
 // La BD esta disponible si hay binding D1. Devuelve 503 si falta.
 function dataSource(c) {
   if (c.env.DB) return null;
-  return c.json(
-    { error: "D1 no esta configurado. Asocia el binding DB en wrangler.toml." },
-    503,
-  );
+  return c.json({ error: "D1 no esta configurado. Asocia el binding DB en wrangler.toml." }, 503);
 }
 function routeError(c, error) {
   const statusCode = Number.isInteger(error?.status) ? error.status : 500;
@@ -135,8 +132,7 @@ function requirePermission(permKey) {
 const rlStore = new Map();
 function rateLimit(max, windowMs) {
   return async (c, next) => {
-    const ip =
-      c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "unknown";
+    const ip = c.req.header("cf-connecting-ip") || c.req.header("x-forwarded-for") || "unknown";
     const key = `${c.req.path}:${ip}`;
     const now = Date.now();
     const rec = rlStore.get(key);
@@ -211,15 +207,19 @@ app.get("/api/menu-items", async (c) => {
 app.post("/api/auth/login", loginLimiter, async (c) => {
   const { JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD_HASH } = getEnv(c);
   const { username, password } = await c.req.json().catch(() => ({}));
-  if (!username || !password)
-    return c.json({ error: "Usuario y contraseña requeridos" }, 400);
+  if (!username || !password) return c.json({ error: "Usuario y contraseña requeridos" }, 400);
 
   if (ADMIN_EMAIL && username === ADMIN_EMAIL) {
     if (!ADMIN_PASSWORD_HASH || !bcrypt.compareSync(password, ADMIN_PASSWORD_HASH))
       return c.json({ error: "Credenciales incorrectas" }, 401);
     const perms = allPermissionsTrue();
     const token = await sign(
-      { username, isSuperAdmin: true, permissions: perms, exp: Math.floor(Date.now() / 1000) + 28800 },
+      {
+        username,
+        isSuperAdmin: true,
+        permissions: perms,
+        exp: Math.floor(Date.now() / 1000) + 28800,
+      },
       JWT_SECRET,
       JWT_ALG,
     );
@@ -241,7 +241,12 @@ app.post("/api/auth/login", loginLimiter, async (c) => {
       JWT_SECRET,
       JWT_ALG,
     );
-    return c.json({ token, username: user.email, isSuperAdmin: false, permissions: user.permissions });
+    return c.json({
+      token,
+      username: user.email,
+      isSuperAdmin: false,
+      permissions: user.permissions,
+    });
   } catch (e) {
     return routeError(c, e);
   }
@@ -275,59 +280,47 @@ function fileToMulterLike(file, buffer) {
   };
 }
 
-app.post(
-  "/api/admin/imagenes",
-  auth,
-  requirePermission("puede_subir_archivos"),
-  async (c) => {
-    const { file, name } = await readMultipart(c);
-    if (!file || typeof file === "string")
-      return c.json({ error: "No se subió ningún archivo" }, 400);
-    if (file.size > MAX_FILE)
-      return c.json({ error: "El archivo es muy grande (máximo 50MB)" }, 400);
-    if (!ALLOWED_IMG.includes(file.type))
-      return c.json({ error: "Solo se permiten imágenes (JPEG, PNG, WebP, GIF)" }, 400);
-    const finalName = name || file.name.replace(/\.[^/.]+$/, "").trim();
-    if (!finalName) return c.json({ error: "El nombre de la imagen es requerido" }, 400);
-    const ds = dataSource(c);
-    if (ds) return ds;
-    try {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const url = await uploadFileToStorage(fileToMulterLike(file, buffer), "images");
-      const saved = await createImagenAsset({ label: finalName, url });
-      return c.json(saved, 201);
-    } catch (e) {
-      return routeError(c, e);
-    }
-  },
-);
+app.post("/api/admin/imagenes", auth, requirePermission("puede_subir_archivos"), async (c) => {
+  const { file, name } = await readMultipart(c);
+  if (!file || typeof file === "string")
+    return c.json({ error: "No se subió ningún archivo" }, 400);
+  if (file.size > MAX_FILE) return c.json({ error: "El archivo es muy grande (máximo 50MB)" }, 400);
+  if (!ALLOWED_IMG.includes(file.type))
+    return c.json({ error: "Solo se permiten imágenes (JPEG, PNG, WebP, GIF)" }, 400);
+  const finalName = name || file.name.replace(/\.[^/.]+$/, "").trim();
+  if (!finalName) return c.json({ error: "El nombre de la imagen es requerido" }, 400);
+  const ds = dataSource(c);
+  if (ds) return ds;
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const url = await uploadFileToStorage(fileToMulterLike(file, buffer), "images");
+    const saved = await createImagenAsset({ label: finalName, url });
+    return c.json(saved, 201);
+  } catch (e) {
+    return routeError(c, e);
+  }
+});
 
-app.post(
-  "/api/admin/modelos",
-  auth,
-  requirePermission("puede_subir_archivos"),
-  async (c) => {
-    const { file, name } = await readMultipart(c);
-    if (!file || typeof file === "string")
-      return c.json({ error: "No se subió ningún archivo" }, 400);
-    if (file.size > MAX_FILE)
-      return c.json({ error: "El archivo es muy grande (máximo 50MB)" }, 400);
-    if (!file.name.toLowerCase().endsWith(".glb"))
-      return c.json({ error: "El modelo AR debe tener extensión .glb" }, 400);
-    const finalName = name || file.name.replace(/\.[^/.]+$/, "").trim();
-    if (!finalName) return c.json({ error: "El nombre del modelo es requerido" }, 400);
-    const ds = dataSource(c);
-    if (ds) return ds;
-    try {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const url = await uploadFileToStorage(fileToMulterLike(file, buffer), "models");
-      const saved = await createModeloAsset({ label: finalName, url });
-      return c.json(saved, 201);
-    } catch (e) {
-      return routeError(c, e);
-    }
-  },
-);
+app.post("/api/admin/modelos", auth, requirePermission("puede_subir_archivos"), async (c) => {
+  const { file, name } = await readMultipart(c);
+  if (!file || typeof file === "string")
+    return c.json({ error: "No se subió ningún archivo" }, 400);
+  if (file.size > MAX_FILE) return c.json({ error: "El archivo es muy grande (máximo 50MB)" }, 400);
+  if (!file.name.toLowerCase().endsWith(".glb"))
+    return c.json({ error: "El modelo AR debe tener extensión .glb" }, 400);
+  const finalName = name || file.name.replace(/\.[^/.]+$/, "").trim();
+  if (!finalName) return c.json({ error: "El nombre del modelo es requerido" }, 400);
+  const ds = dataSource(c);
+  if (ds) return ds;
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const url = await uploadFileToStorage(fileToMulterLike(file, buffer), "models");
+    const saved = await createModeloAsset({ label: finalName, url });
+    return c.json(saved, 201);
+  } catch (e) {
+    return routeError(c, e);
+  }
+});
 
 app.delete(
   "/api/admin/imagenes/:id",
@@ -434,67 +427,52 @@ app.get("/api/admin/items", auth, async (c) => {
     return routeError(c, e);
   }
 });
-app.post(
-  "/api/admin/items",
-  auth,
-  requirePermission("puede_crear_platos"),
-  async (c) => {
-    const b = await c.req.json().catch(() => ({}));
-    if (!isValidId(b.id))
-      return c.json({ error: "id invalido (solo letras, numeros, guion y guion bajo)" }, 400);
-    if (!isNonEmptyString(b.category)) return c.json({ error: "category es requerido" }, 400);
-    if (!isNonEmptyString(b.name)) return c.json({ error: "name es requerido" }, 400);
-    if (!isValidPrice(b.price)) return c.json({ error: "price es requerido" }, 400);
-    if (b.image && !isSafeImageRef(b.image)) return c.json({ error: "Imagen no permitida" }, 400);
-    if (b.modelAR && !isValidModeloId(b.modelAR))
-      return c.json({ error: "modelAR debe ser un id de modelo valido" }, 400);
-    const cardErr = validateCardFields(b);
-    if (cardErr) return c.json({ error: cardErr }, 400);
-    const ds = dataSource(c);
-    if (ds) return ds;
-    try {
-      return c.json(await createItem(b), 201);
-    } catch (e) {
-      return routeError(c, e);
-    }
-  },
-);
-app.put(
-  "/api/admin/items/:id",
-  auth,
-  requirePermission("puede_editar_platos"),
-  async (c) => {
-    const b = (await c.req.json().catch(() => ({}))) || {};
-    if (b.image !== undefined && b.image && !isSafeImageRef(b.image))
-      return c.json({ error: "Imagen no permitida" }, 400);
-    if (b.modelAR !== undefined && b.modelAR && !isValidModeloId(b.modelAR))
-      return c.json({ error: "modelAR debe ser un id de modelo valido" }, 400);
-    const cardErr = validateCardFields(b);
-    if (cardErr) return c.json({ error: cardErr }, 400);
-    const ds = dataSource(c);
-    if (ds) return ds;
-    try {
-      return c.json(await updateItem(c.req.param("id"), b));
-    } catch (e) {
-      return routeError(c, e);
-    }
-  },
-);
-app.delete(
-  "/api/admin/items/:id",
-  auth,
-  requirePermission("puede_eliminar_platos"),
-  async (c) => {
-    const ds = dataSource(c);
-    if (ds) return ds;
-    try {
-      await deleteItem(c.req.param("id"));
-      return c.json({ message: "Item eliminado" });
-    } catch (e) {
-      return routeError(c, e);
-    }
-  },
-);
+app.post("/api/admin/items", auth, requirePermission("puede_crear_platos"), async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  if (!isValidId(b.id))
+    return c.json({ error: "id invalido (solo letras, numeros, guion y guion bajo)" }, 400);
+  if (!isNonEmptyString(b.category)) return c.json({ error: "category es requerido" }, 400);
+  if (!isNonEmptyString(b.name)) return c.json({ error: "name es requerido" }, 400);
+  if (!isValidPrice(b.price)) return c.json({ error: "price es requerido" }, 400);
+  if (b.image && !isSafeImageRef(b.image)) return c.json({ error: "Imagen no permitida" }, 400);
+  if (b.modelAR && !isValidModeloId(b.modelAR))
+    return c.json({ error: "modelAR debe ser un id de modelo valido" }, 400);
+  const cardErr = validateCardFields(b);
+  if (cardErr) return c.json({ error: cardErr }, 400);
+  const ds = dataSource(c);
+  if (ds) return ds;
+  try {
+    return c.json(await createItem(b), 201);
+  } catch (e) {
+    return routeError(c, e);
+  }
+});
+app.put("/api/admin/items/:id", auth, requirePermission("puede_editar_platos"), async (c) => {
+  const b = (await c.req.json().catch(() => ({}))) || {};
+  if (b.image !== undefined && b.image && !isSafeImageRef(b.image))
+    return c.json({ error: "Imagen no permitida" }, 400);
+  if (b.modelAR !== undefined && b.modelAR && !isValidModeloId(b.modelAR))
+    return c.json({ error: "modelAR debe ser un id de modelo valido" }, 400);
+  const cardErr = validateCardFields(b);
+  if (cardErr) return c.json({ error: cardErr }, 400);
+  const ds = dataSource(c);
+  if (ds) return ds;
+  try {
+    return c.json(await updateItem(c.req.param("id"), b));
+  } catch (e) {
+    return routeError(c, e);
+  }
+});
+app.delete("/api/admin/items/:id", auth, requirePermission("puede_eliminar_platos"), async (c) => {
+  const ds = dataSource(c);
+  if (ds) return ds;
+  try {
+    await deleteItem(c.req.param("id"));
+    return c.json({ message: "Item eliminado" });
+  } catch (e) {
+    return routeError(c, e);
+  }
+});
 
 // ========== ADMIN: historial colores ==========
 app.get("/api/admin/historial-colores", auth, async (c) => {
@@ -520,38 +498,28 @@ app.post("/api/admin/historial-colores", auth, async (c) => {
 });
 
 // ========== ADMIN: usuarios ==========
-app.get(
-  "/api/admin/usuarios",
-  auth,
-  requirePermission("puede_gestionar_usuarios"),
-  async (c) => {
-    const ds = dataSource(c);
-    if (ds) return ds;
-    try {
-      return c.json(await listUsuarios());
-    } catch (e) {
-      return routeError(c, e);
-    }
-  },
-);
-app.post(
-  "/api/admin/usuarios",
-  auth,
-  requirePermission("puede_gestionar_usuarios"),
-  async (c) => {
-    const { email, password, permissions } = await c.req.json().catch(() => ({}));
-    if (!isNonEmptyString(email)) return c.json({ error: "email es requerido" }, 400);
-    if (typeof password !== "string" || password.length < 6)
-      return c.json({ error: "password es requerido y debe tener al menos 6 caracteres" }, 400);
-    const ds = dataSource(c);
-    if (ds) return ds;
-    try {
-      return c.json(await createUsuario({ email, password, permissions }), 201);
-    } catch (e) {
-      return routeError(c, e);
-    }
-  },
-);
+app.get("/api/admin/usuarios", auth, requirePermission("puede_gestionar_usuarios"), async (c) => {
+  const ds = dataSource(c);
+  if (ds) return ds;
+  try {
+    return c.json(await listUsuarios());
+  } catch (e) {
+    return routeError(c, e);
+  }
+});
+app.post("/api/admin/usuarios", auth, requirePermission("puede_gestionar_usuarios"), async (c) => {
+  const { email, password, permissions } = await c.req.json().catch(() => ({}));
+  if (!isNonEmptyString(email)) return c.json({ error: "email es requerido" }, 400);
+  if (typeof password !== "string" || password.length < 6)
+    return c.json({ error: "password es requerido y debe tener al menos 6 caracteres" }, 400);
+  const ds = dataSource(c);
+  if (ds) return ds;
+  try {
+    return c.json(await createUsuario({ email, password, permissions }), 201);
+  } catch (e) {
+    return routeError(c, e);
+  }
+});
 app.put(
   "/api/admin/usuarios/:id",
   auth,
@@ -560,7 +528,9 @@ app.put(
     const ds = dataSource(c);
     if (ds) return ds;
     try {
-      return c.json(await updateUsuario(c.req.param("id"), (await c.req.json().catch(() => ({}))) || {}));
+      return c.json(
+        await updateUsuario(c.req.param("id"), (await c.req.json().catch(() => ({}))) || {}),
+      );
     } catch (e) {
       return routeError(c, e);
     }

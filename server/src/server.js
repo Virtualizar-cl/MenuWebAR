@@ -1,6 +1,10 @@
 // Carga las variables de entorno desde .env que esta en la raiz del proyecto,
 // no en la carpeta /server. Por eso el path con "..".
-try { require("dotenv").config(); } catch { /* dotenv es opcional en produccion */ }
+try {
+  require("dotenv").config();
+} catch {
+  /* dotenv es opcional en produccion */
+}
 
 const express = require("express");
 const cors = require("cors");
@@ -363,7 +367,7 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
     return res.status(400).json({ error: "Usuario y contraseña requeridos" });
   }
 
-// Primera puerta: super_admin desde env vars
+  // Primera puerta: super_admin desde env vars
   if (ADMIN_EMAIL && username === ADMIN_EMAIL) {
     if (!ADMIN_PASSWORD_HASH || !bcrypt.compareSync(password, ADMIN_PASSWORD_HASH)) {
       return res.status(401).json({ error: "Credenciales incorrectas" });

@@ -9,7 +9,10 @@ const RAW = import.meta.env.VITE_API_URL;
 function buildApiUrl(raw) {
   if (!raw || !raw.trim()) return "/api";
   // Quita barras finales y un "/api" final si ya viene incluido.
-  const base = raw.trim().replace(/\/+$/, "").replace(/\/api$/, "");
+  const base = raw
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/api$/, "");
   return `${base}/api`;
 }
 

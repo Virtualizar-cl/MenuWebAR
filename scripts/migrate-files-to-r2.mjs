@@ -138,9 +138,7 @@ async function main() {
   for (const row of modelos) {
     const newUrl = await migrateRow({ folder: "models", url: row.url_model });
     if (newUrl) {
-      updates.push(
-        `UPDATE modelos SET url_model='${esc(newUrl)}' WHERE id_model=${row.id_model};`,
-      );
+      updates.push(`UPDATE modelos SET url_model='${esc(newUrl)}' WHERE id_model=${row.id_model};`);
     }
   }
 

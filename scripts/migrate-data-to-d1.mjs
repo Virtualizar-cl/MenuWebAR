@@ -135,7 +135,13 @@ async function main() {
     const perms = PK.map((k) => lit(Boolean(r[k]))).join(", ");
     out.push(
       `INSERT INTO usuarios (id_usuario, email, password_hash, ${PK.join(", ")}, creado_en) VALUES (` +
-        [lit(r.id_usuario), lit(r.email), lit(r.password_hash), perms, lit(isoOrNull(r.creado_en) || new Date().toISOString())].join(", ") +
+        [
+          lit(r.id_usuario),
+          lit(r.email),
+          lit(r.password_hash),
+          perms,
+          lit(isoOrNull(r.creado_en) || new Date().toISOString()),
+        ].join(", ") +
         ");",
     );
   }
