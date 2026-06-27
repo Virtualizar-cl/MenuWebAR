@@ -1,33 +1,18 @@
 const request = require("supertest");
-const fs = require("fs");
-const path = require("path");
+const bcrypt = require("bcryptjs");
 
-// Override env BEFORE dotenv loads (dotenv won't override existing values)
+// Override env BEFORE the server module loads (dotenv won't override existing
+// values). El super admin se valida con ADMIN_EMAIL + ADMIN_PASSWORD_HASH
+// (hash bcrypt), no con la pass en texto plano.
+const ADMIN_PASSWORD = "TestPassword123";
 process.env.JWT_SECRET = "test-secret-for-testing-only";
-process.env.ADMIN_DEFAULT_EMAIL = "test@test.com";
-process.env.ADMIN_DEFAULT_PASSWORD = "TestPassword123";
-// Set test Supabase URL so isSupabaseStorageUrl can validate; disable the
-// client by leaving SERVICE_ROLE_KEY empty (dotenv won't override a set var).
+process.env.ADMIN_EMAIL = "test@test.com";
+process.env.ADMIN_PASSWORD_HASH = bcrypt.hashSync(ADMIN_PASSWORD, 10);
+// Set test Supabase URL so isManagedStorageUrl can validate Storage URLs; the
+// service role key is a dummy (never used for real calls because the DB stays
+// unconfigured, so requests cut off at 503 before touching Supabase).
 process.env.SUPABASE_URL = "https://test-project.supabase.co";
-process.env.SUPABASE_SERVICE_ROLE_KEY = "";
-
-const ADMIN_FILE = path.join(__dirname, "..", "data", "admin.json");
-
-let originalAdminData;
-
-if (fs.existsSync(ADMIN_FILE)) {
-  originalAdminData = fs.readFileSync(ADMIN_FILE, "utf-8");
-}
-
-afterAll(() => {
-  if (originalAdminData) {
-    fs.writeFileSync(ADMIN_FILE, originalAdminData);
-  }
-});
-
-if (fs.existsSync(ADMIN_FILE)) {
-  fs.unlinkSync(ADMIN_FILE);
-}
+process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key-not-used-for-real-calls";
 
 const app = require("../server");
 
@@ -89,7 +74,7 @@ describe("API Endpoints", () => {
     it("returns token for valid credentials", async () => {
       const res = await request(app)
         .post("/api/auth/login")
-        .send({ username: "test@test.com", password: "TestPassword123" });
+        .send({ username: "test@test.com", password: ADMIN_PASSWORD });
       expect(res.status).toBe(200);
       expect(res.body.token).toBeDefined();
       expect(res.body.username).toBe("test@test.com");
@@ -102,7 +87,7 @@ describe("API Endpoints", () => {
     beforeAll(async () => {
       const res = await request(app)
         .post("/api/auth/login")
-        .send({ username: "test@test.com", password: "TestPassword123" });
+        .send({ username: "test@test.com", password: ADMIN_PASSWORD });
       token = res.body.token;
     });
 
