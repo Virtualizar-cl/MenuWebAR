@@ -6,7 +6,7 @@ import prettierConfig from "eslint-config-prettier";
 
 export default [
   {
-    ignores: ["node_modules/", "dist/", "build/"],
+    ignores: ["**/node_modules/", "**/dist/", "**/build/"],
   },
   js.configs.recommended,
   {
@@ -78,6 +78,45 @@ export default [
         beforeAll: "readonly",
         afterAll: "readonly",
       },
+    },
+  },
+  // Worker de Cloudflare + adaptadores/storage que son ESM puro.
+  // ESLint los parseaba como CommonJS y ni los analizaba; aca los tratamos
+  // como modulos con los globals de Workers (mas Buffer/process/console que
+  // el runtime de Cloudflare expone con nodejs_compat).
+  {
+    files: ["worker.js", "server/src/db/d1Adapter.js", "server/src/storage/r2Storage.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: {
+        ...globals.worker,
+        ...globals.browser,
+        Buffer: "readonly",
+        process: "readonly",
+        console: "readonly",
+      },
+    },
+    rules: {
+      "no-unused-vars": "warn",
+    },
+  },
+  // Entrypoint serverless de Vercel: es CommonJS (module.exports / require).
+  {
+    files: ["api/**/*.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "commonjs",
+      globals: { ...globals.node },
+    },
+  },
+  // Scripts de migracion: .mjs, corren en Node como ESM.
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "module",
+      globals: { ...globals.node },
     },
   },
   prettierConfig,

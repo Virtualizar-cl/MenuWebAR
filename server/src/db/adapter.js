@@ -109,7 +109,6 @@ module.exports = {
   PERMISSION_KEYS,
   HISTORIAL_COLORES_MAX,
   HEX_COLOR_RE,
-  REQUIRED_METHODS,
   assertImplementsAdapter,
   httpError,
 };
