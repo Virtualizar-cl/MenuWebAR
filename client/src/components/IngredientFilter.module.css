@@ -1,0 +1,214 @@
+.filterWrapper {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  max-width: 900px;
+  margin-bottom: 1.1rem;
+}
+
+.filterBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(212, 170, 99, 0.2);
+  background: rgba(12, 20, 35, 0.7);
+  color: rgba(241, 233, 221, 0.85);
+  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 0.74rem;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  padding: 0.62rem 1rem;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.filterBtn:hover {
+  background: var(--r66-gold);
+  color: #111827;
+}
+
+.filterBtnActive {
+  border-color: var(--r66-gold);
+  color: var(--r66-gold);
+}
+
+.filterBtnActive:hover {
+  color: #111827;
+}
+
+.filterIcon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.filterCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--r66-gold);
+  color: #111827;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.filterBtn:hover .filterCount {
+  background: #111827;
+  color: var(--r66-gold);
+}
+
+.filterPanel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 40;
+  width: min(320px, 88vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid rgba(212, 170, 99, 0.25);
+  border-radius: 16px;
+  background: rgba(13, 25, 45, 0.97);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  padding: 1rem;
+  animation: filterFadeIn 0.18s ease-out;
+}
+
+@keyframes filterFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid rgba(212, 170, 99, 0.18);
+}
+
+.panelTitle {
+  color: var(--r66-gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.clearBtn {
+  border: none;
+  background: transparent;
+  color: rgba(241, 233, 221, 0.6);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: 0.2s ease;
+}
+
+.clearBtn:hover {
+  color: var(--r66-gold);
+}
+
+.ingredientList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.ingredientRow {
+  margin: 0;
+}
+
+.ingredientLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 0.4rem;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.ingredientLabel:hover {
+  background: rgba(212, 170, 99, 0.1);
+}
+
+.checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.checkboxBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid rgba(212, 170, 99, 0.45);
+  background: rgba(12, 20, 35, 0.7);
+  transition: 0.15s ease;
+}
+
+.checkbox:checked + .checkboxBox {
+  background: var(--r66-gold);
+  border-color: var(--r66-gold);
+}
+
+.checkbox:focus-visible + .checkboxBox {
+  outline: 2px solid var(--r66-gold);
+  outline-offset: 2px;
+}
+
+.checkIcon {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: #111827;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.checkbox:checked + .checkboxBox .checkIcon {
+  opacity: 1;
+}
+
+.ingredientName {
+  color: rgba(241, 233, 221, 0.9);
+  font-size: 0.86rem;
+  line-height: 1.2;
+  text-transform: capitalize;
+}
+
+.checkbox:not(:checked) ~ .ingredientName {
+  color: rgba(241, 233, 221, 0.4);
+  text-decoration: line-through;
+}

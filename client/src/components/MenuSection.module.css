@@ -50,3 +50,11 @@
     grid-template-columns: 1fr;
   }
 }
+
+.emptyMessage {
+  color: rgba(241, 233, 221, 0.6);
+  font-size: 0.95rem;
+  text-align: center;
+  padding: 2rem 1rem;
+  width: 100%;
+}
